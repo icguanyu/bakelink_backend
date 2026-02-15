@@ -1,0 +1,38 @@
+# Node/Express 常見忽略
+
+# 環境變數檔（保留 .env.example 於版控）
+.env
+.env.*
+!.env.example
+
+# 套件資料夾
+node_modules/
+
+# 日誌與除錯輸出
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# 進程 ID
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# 覆蓋率與測試輸出
+coverage/
+.nyc_output/
+
+# 依建置產物（如使用 Babel/TypeScript 或打包）
+dist/
+build/
+tmp/
+temp/
+.cache/
+
+# 作業系統/編輯器雜項
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
