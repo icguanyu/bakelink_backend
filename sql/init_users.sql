@@ -1,24 +1,31 @@
--- 啟用隨機 UUID 函式（PostgreSQL 內建 pgcrypto 擴充）
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
--- 使用 UUID 作為使用者主鍵
-CREATE TABLE
-  IF NOT EXISTS users (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid (),
-    name VARCHAR(100) NOT NULL,
-    phone VARCHAR(20),
-    email VARCHAR(255) UNIQUE NOT NULL,
-    created_at TIMESTAMPTZ DEFAULT NOW ()
-  );
+CREATE TABLE IF NOT EXISTS users (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name VARCHAR(100) NOT NULL,
+  phone VARCHAR(20),
+  email VARCHAR(255) UNIQUE NOT NULL,
+  password_hash TEXT,
+  role VARCHAR(20) NOT NULL DEFAULT 'user',
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
 
--- If users table already existed from an older schema, add missing columns safely.
 ALTER TABLE users
 ADD COLUMN IF NOT EXISTS phone VARCHAR(20);
 
--- 範例資料
-INSERT INTO
-  users (name, phone, email)
+ALTER TABLE users
+ADD COLUMN IF NOT EXISTS password_hash TEXT;
+
+ALTER TABLE users
+ADD COLUMN IF NOT EXISTS role VARCHAR(20) NOT NULL DEFAULT 'user';
+
+ALTER TABLE users
+ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+
+INSERT INTO users (name, phone, email, role)
 VALUES
-  ('Alice', '123-456-7890', 'alice@example.com'),
-  ('Bob', '987-654-3210', 'bob@example.com'),
-  ('Charlie', '555-555-5555', 'charlie@example.com') ON CONFLICT (email) DO NOTHING;
+  ('Alice', '123-456-7890', 'alice@example.com', 'user'),
+  ('Bob', '987-654-3210', 'bob@example.com', 'user'),
+  ('Charlie', '555-555-5555', 'charlie@example.com', 'user')
+ON CONFLICT (email) DO NOTHING;
