@@ -8,20 +8,20 @@ function authRequired(req, res, next) {
     : "";
 
   if (!token) {
-    return res.status(401).json({ message: "Missing bearer token." });
+    return res.status(401).json({ message: "缺少 Bearer 權杖。" });
   }
 
   try {
     req.user = jwt.verify(token, jwtCfg.secret);
     next();
   } catch (error) {
-    return res.status(401).json({ message: "Invalid or expired token." });
+    return res.status(401).json({ message: "權杖無效或已過期。" });
   }
 }
 
 function adminOnly(req, res, next) {
   if (req.user?.role !== "admin") {
-    return res.status(403).json({ message: "Admin access required." });
+    return res.status(403).json({ message: "需要管理員權限。" });
   }
   next();
 }

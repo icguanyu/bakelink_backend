@@ -17,7 +17,7 @@ async function list(req, res) {
     const total = countResult.rows[0]?.total || 0;
 
     const result = await pool.query(
-      `SELECT id, user_id, name, created_at, updated_at
+      `SELECT id, name
        FROM product_categories
        WHERE user_id = $1
          AND ($2 = '' OR name ILIKE $3)
@@ -31,7 +31,7 @@ async function list(req, res) {
     });
   } catch (error) {
     console.error("GET /product-categories error:", error.message);
-    res.status(500).json({ message: "Failed to fetch categories.", error: error.message });
+    res.status(500).json({ message: "取得分類失敗。", error: error.message });
   }
 }
 
@@ -45,20 +45,20 @@ async function getById(req, res) {
     );
 
     if (!result.rows[0]) {
-      return res.status(404).json({ message: "Category not found." });
+      return res.status(404).json({ message: "找不到分類。" });
     }
 
     res.json(result.rows[0]);
   } catch (error) {
     console.error("GET /product-categories/:id error:", error.message);
-    res.status(500).json({ message: "Failed to fetch category.", error: error.message });
+    res.status(500).json({ message: "取得分類失敗。", error: error.message });
   }
 }
 
 async function create(req, res) {
   const { name } = req.body || {};
   if (!name || !String(name).trim()) {
-    return res.status(400).json({ message: "name is required." });
+    return res.status(400).json({ message: "必須提供名稱。" });
   }
 
   try {
@@ -71,17 +71,17 @@ async function create(req, res) {
     res.status(201).json(result.rows[0]);
   } catch (error) {
     if (error.code === "23505") {
-      return res.status(409).json({ message: "Category name already exists." });
+      return res.status(409).json({ message: "分類名稱已存在。" });
     }
     console.error("POST /product-categories error:", error.message);
-    res.status(500).json({ message: "Failed to create category.", error: error.message });
+    res.status(500).json({ message: "建立分類失敗。", error: error.message });
   }
 }
 
 async function update(req, res) {
   const { name } = req.body || {};
   if (!name || !String(name).trim()) {
-    return res.status(400).json({ message: "name is required." });
+    return res.status(400).json({ message: "必須提供名稱。" });
   }
 
   try {
@@ -94,16 +94,16 @@ async function update(req, res) {
     );
 
     if (!result.rows[0]) {
-      return res.status(404).json({ message: "Category not found." });
+      return res.status(404).json({ message: "找不到分類。" });
     }
 
     res.json(result.rows[0]);
   } catch (error) {
     if (error.code === "23505") {
-      return res.status(409).json({ message: "Category name already exists." });
+      return res.status(409).json({ message: "分類名稱已存在。" });
     }
     console.error("PUT /product-categories/:id error:", error.message);
-    res.status(500).json({ message: "Failed to update category.", error: error.message });
+    res.status(500).json({ message: "更新分類失敗。", error: error.message });
   }
 }
 
@@ -117,13 +117,13 @@ async function remove(req, res) {
     );
 
     if (!result.rows[0]) {
-      return res.status(404).json({ message: "Category not found." });
+      return res.status(404).json({ message: "找不到分類。" });
     }
 
     res.status(204).send();
   } catch (error) {
     console.error("DELETE /product-categories/:id error:", error.message);
-    res.status(500).json({ message: "Failed to delete category.", error: error.message });
+    res.status(500).json({ message: "刪除分類失敗。", error: error.message });
   }
 }
 

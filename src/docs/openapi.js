@@ -83,7 +83,7 @@ const openapi = {
       },
       ProductBody: {
         type: "object",
-        required: ["name", "category_id"],
+        required: ["name", "category_id", "price"],
         properties: {
           name: {
             type: "string",
@@ -95,6 +95,12 @@ const openapi = {
             format: "uuid",
             description: "分類 ID（UUID）",
             example: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+          },
+          price: {
+            type: "number",
+            format: "float",
+            description: "售價，需為非負數字（單位：元）",
+            example: 99.0,
           },
         },
         description: "商品資料",

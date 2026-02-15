@@ -11,8 +11,7 @@ async function list(req, res) {
   } catch (error) {
     console.error("GET /users error:", error.message);
     res.status(500).json({
-      message:
-        "Database query failed. Please check your PostgreSQL settings.",
+      message: "資料庫查詢失敗，請檢查 PostgreSQL 設定。",
       error: error.message,
     });
   }
