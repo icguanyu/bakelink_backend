@@ -1,9 +1,11 @@
 const express = require("express");
+const cors = require("cors");
 const swaggerUi = require("swagger-ui-express");
 const openapi = require("./docs/openapi");
 
 const app = express();
 
+app.use(cors());
 app.use(express.json());
 
 // Health / root
