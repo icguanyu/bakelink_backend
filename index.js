@@ -1,3 +1,4 @@
+require("dns").setDefaultResultOrder("ipv4first");
 const { port } = require("./src/config");
 const app = require("./src/app");
 
