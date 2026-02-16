@@ -1,33 +1,53 @@
 const { pool } = require("../db");
-const { parsePagination, buildPaginationMeta } = require("../utils/pagination");
+const {
+  resolvePagination,
+  buildListPaginationMeta,
+} = require("../utils/pagination");
 
 async function list(req, res) {
   try {
-    const { page, limit, offset } = parsePagination(req.query);
-    const keyword = String(req.query.keyword || "").trim();
+    const source = req.method === "POST" ? req.body || {} : req.query;
+    const { hasPagination, page, limit, offset } = resolvePagination(source);
+    const keyword = String(source.keyword || "").trim();
     const keywordPattern = `%${keyword}%`;
 
-    const countResult = await pool.query(
-      `SELECT COUNT(*)::int AS total
-       FROM product_categories
-       WHERE user_id = $1
-         AND ($2 = '' OR name ILIKE $3)`,
-      [req.user.sub, keyword, keywordPattern],
-    );
-    const total = countResult.rows[0]?.total || 0;
+    let total = 0;
+    let result;
 
-    const result = await pool.query(
-      `SELECT id, name
-       FROM product_categories
-       WHERE user_id = $1
-         AND ($2 = '' OR name ILIKE $3)
-       ORDER BY created_at ASC
-       LIMIT $4 OFFSET $5`,
-      [req.user.sub, keyword, keywordPattern, limit, offset],
-    );
+    if (hasPagination) {
+      const countResult = await pool.query(
+        `SELECT COUNT(*)::int AS total
+         FROM product_categories
+         WHERE user_id = $1
+           AND ($2 = '' OR name ILIKE $3)`,
+        [req.user.sub, keyword, keywordPattern],
+      );
+      total = countResult.rows[0]?.total || 0;
+
+      result = await pool.query(
+        `SELECT id, name
+         FROM product_categories
+         WHERE user_id = $1
+           AND ($2 = '' OR name ILIKE $3)
+         ORDER BY created_at ASC
+         LIMIT $4 OFFSET $5`,
+        [req.user.sub, keyword, keywordPattern, limit, offset],
+      );
+    } else {
+      result = await pool.query(
+        `SELECT id, name
+         FROM product_categories
+         WHERE user_id = $1
+           AND ($2 = '' OR name ILIKE $3)
+         ORDER BY created_at ASC`,
+        [req.user.sub, keyword, keywordPattern],
+      );
+      total = result.rows.length;
+    }
+
     res.json({
       data: result.rows,
-      pagination: buildPaginationMeta({ page, limit, total }),
+      pagination: buildListPaginationMeta({ page, limit, total, hasPagination }),
     });
   } catch (error) {
     console.error("GET /product-categories error:", error.message);

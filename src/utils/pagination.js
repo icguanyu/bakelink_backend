@@ -26,4 +26,23 @@ function buildPaginationMeta({ page, limit, total }) {
   };
 }
 
-module.exports = { parsePagination, buildPaginationMeta };
+function resolvePagination(source = {}) {
+  const hasPagination = source.page != null || source.limit != null;
+  if (!hasPagination) {
+    return { hasPagination, page: 1, limit: null, offset: 0 };
+  }
+  const { page, limit, offset } = parsePagination(source);
+  return { hasPagination, page, limit, offset };
+}
+
+function buildListPaginationMeta({ page, limit, total, hasPagination }) {
+  const effectiveLimit = hasPagination ? limit : total || 1;
+  return buildPaginationMeta({ page, limit: effectiveLimit, total });
+}
+
+module.exports = {
+  parsePagination,
+  buildPaginationMeta,
+  resolvePagination,
+  buildListPaginationMeta,
+};

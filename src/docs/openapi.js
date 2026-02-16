@@ -1,4 +1,4 @@
-const openapi = {
+﻿const openapi = {
   openapi: "3.0.3",
   info: {
     title: "BakeLink 後端 API",
@@ -102,6 +102,44 @@ const openapi = {
             description: "售價，需為非負數字（單位：元）",
             example: 99.0,
           },
+          description: {
+            type: "string",
+            description: "商品描述（選填）",
+            example: "手工製作的巧克力貝果，外酥內軟",
+          },
+          ingredients: {
+            type: "string",
+            description: "成分簡述（選填）",
+            example: "麵粉、可可粉、糖、鹽、酵母",
+          },
+          is_active: {
+            type: "boolean",
+            description: "是否上架（選填，預設 true）",
+            example: true,
+          },
+          image_urls: {
+            type: "array",
+            items: { type: "string" },
+            description: "商品圖片 URL 陣列（選填）",
+            example: ["https://example.com/img1.jpg", "https://example.com/img2.jpg"],
+          },
+          ingredient_details: {
+            type: "array",
+            description: "成分明細（選填）",
+            items: {
+              type: "object",
+              required: ["name", "grams", "is_visible"],
+              properties: {
+                name: { type: "string", example: "麵粉" },
+                grams: { type: "number", example: 250.5 },
+                is_visible: { type: "boolean", example: true },
+              },
+            },
+            example: [
+              { name: "麵粉", grams: 250, is_visible: true },
+              { name: "可可粉", grams: 30, is_visible: true },
+            ],
+          },
         },
         description: "商品資料",
       },
@@ -186,32 +224,6 @@ const openapi = {
       },
     },
     "/product-categories": {
-      get: {
-        tags: ["Product Categories"],
-        summary: "列出分類（需登入）",
-        security: [{ BearerAuth: [] }],
-        parameters: [
-          {
-            name: "page",
-            in: "query",
-            description: "頁碼（從 1 開始）",
-            schema: { type: "integer", minimum: 1, default: 1 },
-          },
-          {
-            name: "limit",
-            in: "query",
-            description: "每頁數量（1-100）",
-            schema: { type: "integer", minimum: 1, maximum: 100, default: 10 },
-          },
-          {
-            name: "keyword",
-            in: "query",
-            description: "關鍵字（名稱部分符合）",
-            schema: { type: "string" },
-          },
-        ],
-        responses: { 200: { description: "成功" }, 401: { description: "未授權" } },
-      },
       post: {
         tags: ["Product Categories"],
         summary: "建立分類",
@@ -226,6 +238,29 @@ const openapi = {
           201: { description: "建立成功" },
           409: { description: "名稱重複" },
         },
+      },
+    },
+    "/product-categories/list": {
+      post: {
+        tags: ["Product Categories"],
+        summary: "列出分類（POST 帶 body 參數）",
+        security: [{ BearerAuth: [] }],
+        requestBody: {
+          required: false,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  page: { type: "integer", minimum: 1, default: 1 },
+                  limit: { type: "integer", minimum: 1, maximum: 100, default: 10 },
+                  keyword: { type: "string" },
+                },
+              },
+            },
+          },
+        },
+        responses: { 200: { description: "成功" }, 401: { description: "未授權" } },
       },
     },
     "/product-categories/{id}": {
@@ -285,32 +320,6 @@ const openapi = {
       },
     },
     "/products": {
-      get: {
-        tags: ["Products"],
-        summary: "列出商品（需登入）",
-        security: [{ BearerAuth: [] }],
-        parameters: [
-          {
-            name: "page",
-            in: "query",
-            description: "頁碼（從 1 開始）",
-            schema: { type: "integer", minimum: 1, default: 1 },
-          },
-          {
-            name: "limit",
-            in: "query",
-            description: "每頁數量（1-100）",
-            schema: { type: "integer", minimum: 1, maximum: 100, default: 10 },
-          },
-          {
-            name: "keyword",
-            in: "query",
-            description: "關鍵字（名稱部分符合）",
-            schema: { type: "string" },
-          },
-        ],
-        responses: { 200: { description: "成功" }, 401: { description: "未授權" } },
-      },
       post: {
         tags: ["Products"],
         summary: "建立商品",
@@ -325,6 +334,46 @@ const openapi = {
           201: { description: "建立成功" },
           400: { description: "分類不存在或不合法" },
         },
+      },
+    },
+    "/products/list": {
+      post: {
+        tags: ["Products"],
+        summary: "列出商品（POST 帶 body 參數）",
+        description: "分頁參數為選填，不帶 page/limit 會回傳全部資料。",
+        security: [{ BearerAuth: [] }],
+        requestBody: {
+          required: false,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  page: {
+                    type: "integer",
+                    minimum: 1,
+                    default: 1,
+                    description: "頁碼（選填；未帶 page/limit 時回傳全部）",
+                  },
+                  limit: {
+                    type: "integer",
+                    minimum: 1,
+                    maximum: 100,
+                    default: 10,
+                    description: "每頁數量（選填；未帶 page/limit 時回傳全部）",
+                  },
+                  keyword: { type: "string", description: "關鍵字（選填）" },
+                  category_id: {
+                    type: "string",
+                    format: "uuid",
+                    description: "分類 ID 過濾（選填）",
+                  },
+                },
+              },
+            },
+          },
+        },
+        responses: { 200: { description: "成功" }, 401: { description: "未授權" } },
       },
     },
     "/products/{id}": {

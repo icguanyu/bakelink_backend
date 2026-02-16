@@ -15,10 +15,17 @@ CREATE TABLE IF NOT EXISTS products (
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   category_id UUID NOT NULL,
   name VARCHAR(150) NOT NULL,
+  price NUMERIC(10,2) NOT NULL DEFAULT 0,
+  description TEXT,
+  ingredients TEXT,
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  image_urls TEXT[] NOT NULL DEFAULT '{}'::TEXT[],
+  ingredient_details JSONB NOT NULL DEFAULT '[]'::JSONB,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW(),
   UNIQUE (user_id, name),
   UNIQUE (user_id, category_id, name),
+  CONSTRAINT products_price_non_negative CHECK (price >= 0),
   CONSTRAINT fk_products_category_owner
     FOREIGN KEY (user_id, category_id)
     REFERENCES product_categories(user_id, id)

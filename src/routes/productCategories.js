@@ -9,7 +9,7 @@ const {
 } = require("../controllers/productCategoryController");
 const { authRequired } = require("../middleware/auth");
 
-router.get("/", authRequired, list);
+router.post("/list", authRequired, list);
 router.get("/:id", authRequired, getById);
 router.post("/", authRequired, create);
 router.put("/:id", authRequired, update);
