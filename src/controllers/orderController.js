@@ -3,6 +3,11 @@ const {
   resolvePagination,
   buildListPaginationMeta,
 } = require("../utils/pagination");
+const {
+  parseUtcDatetime,
+  resolveTimeZone,
+  formatDateInTimeZone,
+} = require("../utils/datetime");
 
 const ORDER_STATUSES = new Set(["PLACED", "COMPLETED", "CANCELLED"]);
 
@@ -41,6 +46,17 @@ function normalizeOrderItemInput(item) {
   };
 }
 
+function mapScheduleDate(row, timeZone) {
+  if (!row) {
+    return row;
+  }
+
+  return {
+    ...row,
+    schedule_date: formatDateInTimeZone(row.schedule_date, timeZone),
+  };
+}
+
 function normalizeCreateOrderPayload(body = {}) {
   const scheduleId = String(body.schedule_id || "").trim();
   const customerName = String(body.customer_name || "").trim();
@@ -64,8 +80,8 @@ function normalizeCreateOrderPayload(body = {}) {
     return { error: "pickup_time is required" };
   }
 
-  const pickupTime = new Date(body.pickup_time);
-  if (Number.isNaN(pickupTime.getTime())) {
+  const pickupTime = parseUtcDatetime(body.pickup_time);
+  if (pickupTime.error) {
     return { error: "pickup_time is invalid datetime" };
   }
 
@@ -87,7 +103,7 @@ function normalizeCreateOrderPayload(body = {}) {
       schedule_id: scheduleId,
       customer_name: customerName,
       customer_phone: customerPhone,
-      pickup_time: pickupTime.toISOString(),
+      pickup_time: pickupTime.value,
       note,
       payment_method: paymentMethod,
       items,
@@ -171,8 +187,10 @@ async function list(req, res) {
       total = result.rows.length;
     }
 
+    const timeZone = resolveTimeZone(req);
+    const data = result.rows.map((row) => mapScheduleDate(row, timeZone));
     return res.json({
-      data: result.rows,
+      data,
       pagination: buildListPaginationMeta({ page, limit, total, hasPagination }),
     });
   } catch (error) {
@@ -204,8 +222,9 @@ async function getById(req, res) {
       [req.params.id],
     );
 
+    const timeZone = resolveTimeZone(req);
     return res.json({
-      ...orderResult.rows[0],
+      ...mapScheduleDate(orderResult.rows[0], timeZone),
       items: itemResult.rows,
     });
   } catch (error) {

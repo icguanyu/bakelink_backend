@@ -3,6 +3,11 @@ const {
   resolvePagination,
   buildListPaginationMeta,
 } = require("../utils/pagination");
+const {
+  parseUtcDatetime,
+  resolveTimeZone,
+  formatDateInTimeZone,
+} = require("../utils/datetime");
 
 const SCHEDULE_STATUSES = new Set(["DRAFT", "ANNOUNCED", "OPEN", "CLOSED", "FULFILLED"]);
 
@@ -64,22 +69,22 @@ function normalizeSchedulePayload(body = {}, { partial = false } = {}) {
     if (!body.order_start_at) {
       return { error: "order_start_at is required" };
     }
-    const startAt = new Date(body.order_start_at);
-    if (Number.isNaN(startAt.getTime())) {
+    const startAt = parseUtcDatetime(body.order_start_at);
+    if (startAt.error) {
       return { error: "order_start_at is invalid datetime" };
     }
-    result.order_start_at = startAt.toISOString();
+    result.order_start_at = startAt.value;
   }
 
   if (!partial || body.order_end_at != null) {
     if (!body.order_end_at) {
       return { error: "order_end_at is required" };
     }
-    const endAt = new Date(body.order_end_at);
-    if (Number.isNaN(endAt.getTime())) {
+    const endAt = parseUtcDatetime(body.order_end_at);
+    if (endAt.error) {
       return { error: "order_end_at is invalid datetime" };
     }
-    result.order_end_at = endAt.toISOString();
+    result.order_end_at = endAt.value;
   }
 
   if (result.order_start_at && result.order_end_at) {
@@ -127,6 +132,17 @@ function normalizeSchedulePayload(body = {}, { partial = false } = {}) {
   }
 
   return { value: result };
+}
+
+function mapScheduleDate(row, timeZone) {
+  if (!row) {
+    return row;
+  }
+
+  return {
+    ...row,
+    schedule_date: formatDateInTimeZone(row.schedule_date, timeZone),
+  };
 }
 
 async function upsertScheduleItems(client, userId, scheduleId, items) {
@@ -242,7 +258,7 @@ async function list(req, res) {
       total = countResult.rows[0]?.total || 0;
 
       result = await pool.query(
-        `SELECT s.id, s.schedule_date, s.status, s.order_start_at, s.order_end_at, s.note,
+        `SELECT s.id, s.schedule_date::text AS schedule_date, s.status, s.order_start_at, s.order_end_at, s.note,
                 s.created_at, s.updated_at,
                 COUNT(DISTINCT si.id)::int AS item_count,
                 COUNT(DISTINCT o.id)::int AS order_count
@@ -257,7 +273,7 @@ async function list(req, res) {
       );
     } else {
       result = await pool.query(
-        `SELECT s.id, s.schedule_date, s.status, s.order_start_at, s.order_end_at, s.note,
+        `SELECT s.id, s.schedule_date::text AS schedule_date, s.status, s.order_start_at, s.order_end_at, s.note,
                 s.created_at, s.updated_at,
                 COUNT(DISTINCT si.id)::int AS item_count,
                 COUNT(DISTINCT o.id)::int AS order_count
@@ -272,8 +288,11 @@ async function list(req, res) {
       total = result.rows.length;
     }
 
+    const timeZone = resolveTimeZone(req);
+    const data = result.rows.map((row) => mapScheduleDate(row, timeZone));
+
     return res.json({
-      data: result.rows,
+      data,
       pagination: buildListPaginationMeta({ page, limit, total, hasPagination }),
     });
   } catch (error) {
@@ -283,8 +302,59 @@ async function list(req, res) {
 }
 
 async function listByMonth(req, res) {
-  req.query = { ...req.query, month: req.params.month };
-  return list(req, res);
+  try {
+    const month = String(req.params.month || "").trim();
+    if (!/^[0-9]{4}-[0-9]{2}$/.test(month)) {
+      return res.status(400).json({ message: "month must be YYYY-MM" });
+    }
+
+    const [yearText, monthText] = month.split("-");
+    const year = Number(yearText);
+    const monthNum = Number(monthText);
+    const start = new Date(Date.UTC(year, monthNum - 1, 1));
+    const end = new Date(Date.UTC(year, monthNum, 1));
+
+    const whereClauses = ["s.user_id = $1", "s.schedule_date >= $2", "s.schedule_date < $3"];
+    const values = [req.user.sub, start.toISOString().slice(0, 10), end.toISOString().slice(0, 10)];
+    let paramIndex = values.length + 1;
+
+    const status = req.query.status ? normalizeScheduleStatus(req.query.status) : null;
+    if (req.query.status && !status) {
+      return res
+        .status(400)
+        .json({ message: "status must be one of DRAFT, ANNOUNCED, OPEN, CLOSED, FULFILLED" });
+    }
+    if (status) {
+      whereClauses.push(`s.status = $${paramIndex}`);
+      values.push(status);
+      paramIndex += 1;
+    }
+
+    const whereSql = whereClauses.join(" AND ");
+
+    const result = await pool.query(
+      `SELECT s.id, s.schedule_date::text AS schedule_date, s.status, s.order_start_at, s.order_end_at, s.note,
+              s.created_at, s.updated_at,
+              COUNT(DISTINCT si.id)::int AS item_count,
+              COUNT(DISTINCT o.id)::int AS order_count
+       FROM schedules s
+       LEFT JOIN schedule_items si ON si.schedule_id = s.id
+       LEFT JOIN orders o ON o.schedule_id = s.id
+       WHERE ${whereSql}
+       GROUP BY s.id
+       ORDER BY s.schedule_date ASC`,
+      values,
+    );
+
+    const timeZone = resolveTimeZone(req);
+    const data = result.rows.map((row) => mapScheduleDate(row, timeZone));
+    return res.json({ data });
+  } catch (error) {
+    console.error("GET /schedules/month/:month error:", error.message);
+    return res
+      .status(500)
+      .json({ message: "Failed to list schedules by month", error: error.message });
+  }
 }
 
 // 按日期查詢行程詳情
@@ -299,7 +369,7 @@ async function getByDate(req, res) {
 
     // 查詢行程基本資料
     const scheduleResult = await pool.query(
-      `SELECT id, user_id, schedule_date, status, order_start_at, order_end_at, note, created_at, updated_at
+      `SELECT id, user_id, schedule_date::text AS schedule_date, status, order_start_at, order_end_at, note, created_at, updated_at
        FROM schedules
        WHERE schedule_date = $1 AND user_id = $2`,
       [scheduleDate, req.user.sub],
@@ -319,8 +389,9 @@ async function getByDate(req, res) {
       [scheduleId],
     );
 
+    const timeZone = resolveTimeZone(req);
     return res.json({
-      ...scheduleResult.rows[0],
+      ...mapScheduleDate(scheduleResult.rows[0], timeZone),
       items: itemsResult.rows,
     });
   } catch (error) {
@@ -343,7 +414,7 @@ async function create(req, res) {
     const scheduleResult = await client.query(
       `INSERT INTO schedules (user_id, schedule_date, status, order_start_at, order_end_at, note)
        VALUES ($1, $2, $3, $4, $5, $6)
-       RETURNING id, user_id, schedule_date, status, order_start_at, order_end_at, note, created_at, updated_at`,
+       RETURNING id, user_id, schedule_date::text AS schedule_date, status, order_start_at, order_end_at, note, created_at, updated_at`,
       [
         req.user.sub,
         payload.schedule_date,
@@ -358,7 +429,8 @@ async function create(req, res) {
     await upsertScheduleItems(client, req.user.sub, schedule.id, payload.items);
 
     await client.query("COMMIT");
-    return res.status(201).json(schedule);
+    const timeZone = resolveTimeZone(req);
+    return res.status(201).json(mapScheduleDate(schedule, timeZone));
   } catch (error) {
     await client.query("ROLLBACK");
     if (error.code === "23505") {
@@ -420,13 +492,13 @@ async function update(req, res) {
         `UPDATE schedules
          SET ${editableFields.join(", ")}
          WHERE id = $${paramIndex} AND user_id = $${paramIndex + 1}
-         RETURNING id, user_id, schedule_date, status, order_start_at, order_end_at, note, created_at, updated_at`,
+         RETURNING id, user_id, schedule_date::text AS schedule_date, status, order_start_at, order_end_at, note, created_at, updated_at`,
         [...values, req.params.id, req.user.sub],
       );
       schedule = updateResult.rows[0];
     } else {
       const currentResult = await client.query(
-        `SELECT id, user_id, schedule_date, status, order_start_at, order_end_at, note, created_at, updated_at
+        `SELECT id, user_id, schedule_date::text AS schedule_date, status, order_start_at, order_end_at, note, created_at, updated_at
          FROM schedules
          WHERE id = $1 AND user_id = $2`,
         [req.params.id, req.user.sub],
@@ -444,7 +516,8 @@ async function update(req, res) {
     }
 
     await client.query("COMMIT");
-    return res.json(schedule);
+    const timeZone = resolveTimeZone(req);
+    return res.json(mapScheduleDate(schedule, timeZone));
   } catch (error) {
     await client.query("ROLLBACK");
     if (error.code === "23505") {
