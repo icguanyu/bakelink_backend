@@ -22,5 +22,7 @@ app.use("/auth", require("./routes/auth"));
 app.use("/users", require("./routes/users"));
 app.use("/product-categories", require("./routes/productCategories"));
 app.use("/products", require("./routes/products"));
+app.use("/schedules", require("./routes/schedules"));
+app.use("/orders", require("./routes/orders"));
 
 module.exports = app;

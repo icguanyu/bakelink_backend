@@ -4,7 +4,7 @@
     title: "BakeLink 後端 API",
     version: "1.0.0",
     description:
-      "提供身份驗證、使用者管理、商品分類與商品相關 API。所有受保護端點需使用 JWT，請於 Header 帶入 Authorization: Bearer <token>。",
+      "提供身份驗證、使用者管理、商品分類、商品、接單排程與商家端訂單 API。所有受保護端點需使用 JWT，請於 Header 帶入 Authorization: Bearer <token>。",
   },
   tags: [
     { name: "Health", description: "系統健康檢查" },
@@ -12,6 +12,8 @@
     { name: "Users", description: "使用者列表（管理員）" },
     { name: "Product Categories", description: "商品分類 CRUD" },
     { name: "Products", description: "商品 CRUD" },
+    { name: "Schedules", description: "接單排程 CRUD 與查詢" },
+    { name: "Orders", description: "商家端訂單 CRUD 與狀態管理" },
   ],
   servers: [{ url: "http://localhost:3000" }],
   components: {
@@ -142,6 +144,150 @@
           },
         },
         description: "商品資料",
+      },
+      ScheduleItemBody: {
+        type: "object",
+        required: ["product_id"],
+        properties: {
+          product_id: {
+            type: "string",
+            format: "uuid",
+            description: "商品 ID",
+            example: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+          },
+          sales_limit: {
+            type: "integer",
+            nullable: true,
+            description: "銷售上限（null 代表不限量）",
+            example: 20,
+          },
+        },
+      },
+      ScheduleBody: {
+        type: "object",
+        required: ["schedule_date", "order_start_at", "order_end_at"],
+        properties: {
+          schedule_date: {
+            type: "string",
+            format: "date",
+            description: "接單排程日期（每位商家每天僅可一張）",
+            example: "2026-02-17",
+          },
+          status: {
+            type: "string",
+            enum: ["DRAFT", "ANNOUNCED", "OPEN", "CLOSED", "FULFILLED"],
+            description: "接單排程狀態",
+            example: "DRAFT",
+          },
+          order_start_at: {
+            type: "string",
+            format: "date-time",
+            description: "開單開始時間",
+            example: "2026-02-17T00:00:00.000Z",
+          },
+          order_end_at: {
+            type: "string",
+            format: "date-time",
+            description: "收單截止時間",
+            example: "2026-02-17T10:00:00.000Z",
+          },
+          note: {
+            type: "string",
+            nullable: true,
+            description: "接單排程備註",
+            example: "今日 14:00 後可取貨",
+          },
+          items: {
+            type: "array",
+            description: "接單排程商品（可選）",
+            items: { $ref: "#/components/schemas/ScheduleItemBody" },
+          },
+        },
+      },
+      OrderItemBody: {
+        type: "object",
+        required: ["quantity"],
+        properties: {
+          schedule_item_id: {
+            type: "string",
+            format: "uuid",
+            description: "接單排程品項 ID（schedule_item_id 與 product_id 擇一）",
+          },
+          product_id: {
+            type: "string",
+            format: "uuid",
+            description: "商品 ID（schedule_item_id 與 product_id 擇一）",
+          },
+          quantity: {
+            type: "integer",
+            minimum: 1,
+            description: "訂購數量",
+            example: 3,
+          },
+        },
+      },
+      CreateOrderBody: {
+        type: "object",
+        required: [
+          "schedule_id",
+          "customer_name",
+          "customer_phone",
+          "pickup_time",
+          "payment_method",
+          "items",
+        ],
+        properties: {
+          schedule_id: {
+            type: "string",
+            format: "uuid",
+            description: "接單排程 ID",
+            example: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+          },
+          customer_name: {
+            type: "string",
+            description: "訂購者姓名",
+            example: "王小明",
+          },
+          customer_phone: {
+            type: "string",
+            description: "訂購者電話",
+            example: "0912345678",
+          },
+          pickup_time: {
+            type: "string",
+            format: "date-time",
+            description: "預計取貨時間",
+            example: "2026-02-17T12:30:00.000Z",
+          },
+          note: {
+            type: "string",
+            nullable: true,
+            description: "備註",
+            example: "請幫我分裝",
+          },
+          payment_method: {
+            type: "string",
+            description: "付款方式",
+            example: "cash",
+          },
+          items: {
+            type: "array",
+            minItems: 1,
+            items: { $ref: "#/components/schemas/OrderItemBody" },
+          },
+        },
+      },
+      OrderStatusBody: {
+        type: "object",
+        required: ["status"],
+        properties: {
+          status: {
+            type: "string",
+            enum: ["PLACED", "COMPLETED", "CANCELLED"],
+            description: "訂單狀態",
+            example: "COMPLETED",
+          },
+        },
       },
       Pagination: {
         type: "object",
@@ -432,7 +578,233 @@
         },
       },
     },
+    "/schedules": {
+      post: {
+        tags: ["Schedules"],
+        summary: "建立接單排程",
+        security: [{ BearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": { schema: { $ref: "#/components/schemas/ScheduleBody" } },
+          },
+        },
+        responses: {
+          201: { description: "建立成功" },
+          400: { description: "請求資料不正確" },
+          409: { description: "指定日期已有接單排程" },
+        },
+      },
+    },
+    "/schedules/list": {
+      post: {
+        tags: ["Schedules"],
+        summary: "取得指定日期/範圍/月份的接單排程列表",
+        security: [{ BearerAuth: [] }],
+        requestBody: {
+          required: false,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  page: { type: "integer", minimum: 1, default: 1 },
+                  limit: { type: "integer", minimum: 1, maximum: 100, default: 10 },
+                  date: { type: "string", format: "date", description: "精準日期查詢" },
+                  date_from: { type: "string", format: "date" },
+                  date_to: { type: "string", format: "date" },
+                  month: { type: "string", description: "月份格式 YYYY-MM" },
+                  status: {
+                    type: "string",
+                    enum: ["DRAFT", "ANNOUNCED", "OPEN", "CLOSED", "FULFILLED"],
+                  },
+                },
+              },
+            },
+          },
+        },
+        responses: { 200: { description: "成功" }, 400: { description: "參數格式錯誤" } },
+      },
+    },
+    "/schedules/month/{month}": {
+      get: {
+        tags: ["Schedules"],
+        summary: "取得指定月份接單排程（給月曆）",
+        security: [{ BearerAuth: [] }],
+        parameters: [
+          {
+            name: "month",
+            in: "path",
+            required: true,
+            description: "月份（YYYY-MM）",
+            schema: { type: "string", example: "2026-02" },
+          },
+        ],
+        responses: {
+          200: { description: "成功" },
+          400: { description: "參數格式錯誤" },
+        },
+      },
+    },
+    "/schedules/{id}": {
+      get: {
+        tags: ["Schedules"],
+        summary: "取得單一接單排程與品項",
+        security: [{ BearerAuth: [] }],
+        parameters: [
+          {
+            name: "id",
+            in: "path",
+            required: true,
+            schema: { type: "string", format: "uuid" },
+          },
+        ],
+        responses: { 200: { description: "成功" }, 404: { description: "找不到接單排程" } },
+      },
+      put: {
+        tags: ["Schedules"],
+        summary: "編輯接單排程（可局部更新）",
+        security: [{ BearerAuth: [] }],
+        parameters: [
+          {
+            name: "id",
+            in: "path",
+            required: true,
+            schema: { type: "string", format: "uuid" },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": { schema: { $ref: "#/components/schemas/ScheduleBody" } },
+          },
+        },
+        responses: {
+          200: { description: "更新成功" },
+          404: { description: "找不到接單排程" },
+          409: { description: "日期重複" },
+        },
+      },
+      delete: {
+        tags: ["Schedules"],
+        summary: "刪除接單排程",
+        security: [{ BearerAuth: [] }],
+        parameters: [
+          {
+            name: "id",
+            in: "path",
+            required: true,
+            schema: { type: "string", format: "uuid" },
+          },
+        ],
+        responses: {
+          204: { description: "刪除成功" },
+          404: { description: "找不到接單排程" },
+          409: { description: "已有訂單，無法刪除" },
+        },
+      },
+    },
+    "/orders": {
+      post: {
+        tags: ["Orders"],
+        summary: "建立訂單（商家端）",
+        security: [{ BearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": { schema: { $ref: "#/components/schemas/CreateOrderBody" } },
+          },
+        },
+        responses: {
+          201: { description: "建立成功" },
+          400: { description: "請求資料不正確" },
+          404: { description: "接單排程不存在" },
+          409: { description: "接單排程狀態或銷售上限衝突" },
+        },
+      },
+    },
+    "/orders/list": {
+      post: {
+        tags: ["Orders"],
+        summary: "取得訂單列表",
+        security: [{ BearerAuth: [] }],
+        requestBody: {
+          required: false,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  page: { type: "integer", minimum: 1, default: 1 },
+                  limit: { type: "integer", minimum: 1, maximum: 100, default: 10 },
+                  schedule_id: { type: "string", format: "uuid" },
+                  status: { type: "string", enum: ["PLACED", "COMPLETED", "CANCELLED"] },
+                  date_from: { type: "string", format: "date" },
+                  date_to: { type: "string", format: "date" },
+                },
+              },
+            },
+          },
+        },
+        responses: { 200: { description: "成功" } },
+      },
+    },
+    "/orders/{id}": {
+      get: {
+        tags: ["Orders"],
+        summary: "取得單一訂單與明細",
+        security: [{ BearerAuth: [] }],
+        parameters: [
+          {
+            name: "id",
+            in: "path",
+            required: true,
+            schema: { type: "string", format: "uuid" },
+          },
+        ],
+        responses: { 200: { description: "成功" }, 404: { description: "找不到訂單" } },
+      },
+      delete: {
+        tags: ["Orders"],
+        summary: "刪除訂單",
+        security: [{ BearerAuth: [] }],
+        parameters: [
+          {
+            name: "id",
+            in: "path",
+            required: true,
+            schema: { type: "string", format: "uuid" },
+          },
+        ],
+        responses: { 204: { description: "刪除成功" }, 404: { description: "找不到訂單" } },
+      },
+    },
+    "/orders/{id}/status": {
+      put: {
+        tags: ["Orders"],
+        summary: "更改訂單狀態",
+        security: [{ BearerAuth: [] }],
+        parameters: [
+          {
+            name: "id",
+            in: "path",
+            required: true,
+            schema: { type: "string", format: "uuid" },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": { schema: { $ref: "#/components/schemas/OrderStatusBody" } },
+          },
+        },
+        responses: { 200: { description: "更新成功" }, 404: { description: "找不到訂單" } },
+      },
+    },
   },
 };
 
 module.exports = openapi;
+
+
+

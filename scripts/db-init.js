@@ -5,8 +5,6 @@ const bcrypt = require("bcryptjs");
 require("dotenv").config();
 
 async function main() {
-  const sqlPath = path.join(__dirname, "..", "sql", "init_users.sql");
-  const sql = fs.readFileSync(sqlPath, "utf8");
   const adminEmail = (process.env.ADMIN_EMAIL || "admin@bakelink.local")
     .trim()
     .toLowerCase();
@@ -24,7 +22,33 @@ async function main() {
   });
 
   try {
-    await pool.query(sql);
+    const sqlDir = path.join(__dirname, "..", "sql");
+    const baseSqlFiles = ["init_users.sql", "init_products.sql"];
+    for (const fileName of baseSqlFiles) {
+      const sqlPath = path.join(sqlDir, fileName);
+      if (!fs.existsSync(sqlPath)) {
+        continue;
+      }
+      const sql = fs.readFileSync(sqlPath, "utf8");
+      await pool.query(sql);
+      console.log(`Applied base SQL: ${fileName}`);
+    }
+
+    const migrationsDir = path.join(sqlDir, "migrations");
+    if (fs.existsSync(migrationsDir)) {
+      const migrationFiles = fs
+        .readdirSync(migrationsDir)
+        .filter((name) => name.toLowerCase().endsWith(".sql"))
+        .sort();
+
+      for (const fileName of migrationFiles) {
+        const sqlPath = path.join(migrationsDir, fileName);
+        const sql = fs.readFileSync(sqlPath, "utf8");
+        await pool.query(sql);
+        console.log(`Applied migration: ${fileName}`);
+      }
+    }
+
     const passwordHash = await bcrypt.hash(adminPassword, 10);
     await pool.query(
       `INSERT INTO users (name, email, password_hash, role)
@@ -38,7 +62,7 @@ async function main() {
       [adminName, adminEmail, passwordHash],
     );
 
-    console.log("Database initialized: users table is ready.");
+    console.log("Database initialized successfully.");
     console.log(`Admin account ready: ${adminEmail}`);
   } finally {
     await pool.end();
