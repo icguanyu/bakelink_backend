@@ -3,7 +3,7 @@ const router = express.Router();
 const {
   list,
   listByMonth,
-  getById,
+  getByDate,
   create,
   update,
   remove,
@@ -12,7 +12,7 @@ const { authRequired } = require("../middleware/auth");
 
 router.get("/month/:month", authRequired, listByMonth);
 router.post("/list", authRequired, list);
-router.get("/:id", authRequired, getById);
+router.get("/:date", authRequired, getByDate);
 router.post("/", authRequired, create);
 router.put("/:id", authRequired, update);
 router.delete("/:id", authRequired, remove);

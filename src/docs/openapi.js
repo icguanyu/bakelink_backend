@@ -646,21 +646,24 @@
         },
       },
     },
-    "/schedules/{id}": {
+    "/schedules/{date}": {
       get: {
         tags: ["Schedules"],
-        summary: "取得單一接單排程與品項",
+        summary: "取得指定日期的接單排程與品項",
         security: [{ BearerAuth: [] }],
         parameters: [
           {
-            name: "id",
+            name: "date",
             in: "path",
             required: true,
-            schema: { type: "string", format: "uuid" },
+            schema: { type: "string", format: "date", example: "2026-02-17" },
+            description: "排程日期 (YYYY-MM-DD 格式)",
           },
         ],
-        responses: { 200: { description: "成功" }, 404: { description: "找不到接單排程" } },
+        responses: { 200: { description: "成功" }, 400: { description: "日期格式錯誤" }, 404: { description: "找不到該日期的接單排程" } },
       },
+    },
+    "/schedules/{id}": {
       put: {
         tags: ["Schedules"],
         summary: "編輯接單排程（可局部更新）",

@@ -287,25 +287,36 @@ async function listByMonth(req, res) {
   return list(req, res);
 }
 
-async function getById(req, res) {
+// 按日期查詢行程詳情
+// 根據日期 (YYYY-MM-DD) 取得該天的行程和項目
+async function getByDate(req, res) {
   try {
+    // 驗證日期格式
+    const scheduleDate = req.params.date || String(req.query.date || "").trim();
+    if (!scheduleDate || !/^\d{4}-\d{2}-\d{2}$/.test(scheduleDate)) {
+      return res.status(400).json({ message: "date must be YYYY-MM-DD format" });
+    }
+
+    // 查詢行程基本資料
     const scheduleResult = await pool.query(
       `SELECT id, user_id, schedule_date, status, order_start_at, order_end_at, note, created_at, updated_at
        FROM schedules
-       WHERE id = $1 AND user_id = $2`,
-      [req.params.id, req.user.sub],
+       WHERE schedule_date = $1 AND user_id = $2`,
+      [scheduleDate, req.user.sub],
     );
 
+    // 如果沒有資料，回傳 null
     if (!scheduleResult.rows[0]) {
-      return res.status(404).json({ message: "Schedule not found" });
+      return res.json(null);
     }
 
+    const scheduleId = scheduleResult.rows[0].id;
     const itemsResult = await pool.query(
       `SELECT id, product_id, product_name, unit_price, sales_limit, created_at, updated_at
        FROM schedule_items
        WHERE schedule_id = $1
        ORDER BY created_at ASC`,
-      [req.params.id],
+      [scheduleId],
     );
 
     return res.json({
@@ -313,7 +324,7 @@ async function getById(req, res) {
       items: itemsResult.rows,
     });
   } catch (error) {
-    console.error("GET /schedules/:id error:", error.message);
+    console.error("GET /schedules/:date error:", error.message);
     return res.status(500).json({ message: "Failed to fetch schedule", error: error.message });
   }
 }
@@ -478,7 +489,7 @@ async function remove(req, res) {
 module.exports = {
   list,
   listByMonth,
-  getById,
+  getByDate,
   create,
   update,
   remove,
