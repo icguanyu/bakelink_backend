@@ -7,6 +7,7 @@ const {
   parseUtcDatetime,
   resolveTimeZone,
   formatDateInTimeZone,
+  formatDatetimeInTimeZone,
 } = require("../utils/datetime");
 
 const SCHEDULE_STATUSES = new Set(["DRAFT", "ANNOUNCED", "OPEN", "CLOSED", "FULFILLED"]);
@@ -142,6 +143,8 @@ function mapScheduleDate(row, timeZone) {
   return {
     ...row,
     schedule_date: formatDateInTimeZone(row.schedule_date, timeZone),
+    order_start_at: formatDatetimeInTimeZone(row.order_start_at, timeZone),
+    order_end_at: formatDatetimeInTimeZone(row.order_end_at, timeZone),
   };
 }
 
@@ -259,7 +262,6 @@ async function list(req, res) {
 
       result = await pool.query(
         `SELECT s.id, s.schedule_date::text AS schedule_date, s.status, s.order_start_at, s.order_end_at, s.note,
-                s.created_at, s.updated_at,
                 COUNT(DISTINCT si.id)::int AS item_count,
                 COUNT(DISTINCT o.id)::int AS order_count
          FROM schedules s
@@ -274,7 +276,6 @@ async function list(req, res) {
     } else {
       result = await pool.query(
         `SELECT s.id, s.schedule_date::text AS schedule_date, s.status, s.order_start_at, s.order_end_at, s.note,
-                s.created_at, s.updated_at,
                 COUNT(DISTINCT si.id)::int AS item_count,
                 COUNT(DISTINCT o.id)::int AS order_count
          FROM schedules s
@@ -334,7 +335,6 @@ async function listByMonth(req, res) {
 
     const result = await pool.query(
       `SELECT s.id, s.schedule_date::text AS schedule_date, s.status, s.order_start_at, s.order_end_at, s.note,
-              s.created_at, s.updated_at,
               COUNT(DISTINCT si.id)::int AS item_count,
               COUNT(DISTINCT o.id)::int AS order_count
        FROM schedules s
@@ -369,7 +369,7 @@ async function getByDate(req, res) {
 
     // 查詢行程基本資料
     const scheduleResult = await pool.query(
-      `SELECT id, user_id, schedule_date::text AS schedule_date, status, order_start_at, order_end_at, note, created_at, updated_at
+      `SELECT id, user_id, schedule_date::text AS schedule_date, status, order_start_at, order_end_at, note
        FROM schedules
        WHERE schedule_date = $1 AND user_id = $2`,
       [scheduleDate, req.user.sub],
@@ -382,10 +382,10 @@ async function getByDate(req, res) {
 
     const scheduleId = scheduleResult.rows[0].id;
     const itemsResult = await pool.query(
-      `SELECT id, product_id, product_name, unit_price, sales_limit, created_at, updated_at
+      `SELECT id, product_id, product_name, unit_price, sales_limit
        FROM schedule_items
        WHERE schedule_id = $1
-       ORDER BY created_at ASC`,
+       ORDER BY id ASC`,
       [scheduleId],
     );
 
@@ -414,7 +414,7 @@ async function create(req, res) {
     const scheduleResult = await client.query(
       `INSERT INTO schedules (user_id, schedule_date, status, order_start_at, order_end_at, note)
        VALUES ($1, $2, $3, $4, $5, $6)
-       RETURNING id, user_id, schedule_date::text AS schedule_date, status, order_start_at, order_end_at, note, created_at, updated_at`,
+       RETURNING id, user_id, schedule_date::text AS schedule_date, status, order_start_at, order_end_at, note`,
       [
         req.user.sub,
         payload.schedule_date,
@@ -492,13 +492,13 @@ async function update(req, res) {
         `UPDATE schedules
          SET ${editableFields.join(", ")}
          WHERE id = $${paramIndex} AND user_id = $${paramIndex + 1}
-         RETURNING id, user_id, schedule_date::text AS schedule_date, status, order_start_at, order_end_at, note, created_at, updated_at`,
+         RETURNING id, user_id, schedule_date::text AS schedule_date, status, order_start_at, order_end_at, note`,
         [...values, req.params.id, req.user.sub],
       );
       schedule = updateResult.rows[0];
     } else {
       const currentResult = await client.query(
-        `SELECT id, user_id, schedule_date::text AS schedule_date, status, order_start_at, order_end_at, note, created_at, updated_at
+      `SELECT id, user_id, schedule_date::text AS schedule_date, status, order_start_at, order_end_at, note
          FROM schedules
          WHERE id = $1 AND user_id = $2`,
         [req.params.id, req.user.sub],

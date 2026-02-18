@@ -29,7 +29,7 @@ async function list(req, res) {
          FROM product_categories
          WHERE user_id = $1
            AND ($2 = '' OR name ILIKE $3)
-         ORDER BY created_at ASC
+         ORDER BY id ASC
          LIMIT $4 OFFSET $5`,
         [req.user.sub, keyword, keywordPattern, limit, offset],
       );
@@ -39,7 +39,7 @@ async function list(req, res) {
          FROM product_categories
          WHERE user_id = $1
            AND ($2 = '' OR name ILIKE $3)
-         ORDER BY created_at ASC`,
+         ORDER BY id ASC`,
         [req.user.sub, keyword, keywordPattern],
       );
       total = result.rows.length;
@@ -58,7 +58,7 @@ async function list(req, res) {
 async function getById(req, res) {
   try {
     const result = await pool.query(
-      `SELECT id, user_id, name, created_at, updated_at
+      `SELECT id, user_id, name
        FROM product_categories
        WHERE id = $1 AND user_id = $2`,
       [req.params.id, req.user.sub],
@@ -85,7 +85,7 @@ async function create(req, res) {
     const result = await pool.query(
       `INSERT INTO product_categories (user_id, name)
        VALUES ($1, $2)
-       RETURNING id, user_id, name, created_at, updated_at`,
+       RETURNING id, user_id, name`,
       [req.user.sub, String(name).trim()],
     );
     res.status(201).json(result.rows[0]);
@@ -109,7 +109,7 @@ async function update(req, res) {
       `UPDATE product_categories
        SET name = $1, updated_at = NOW()
        WHERE id = $2 AND user_id = $3
-       RETURNING id, user_id, name, created_at, updated_at`,
+       RETURNING id, user_id, name`,
       [String(name).trim(), req.params.id, req.user.sub],
     );
 

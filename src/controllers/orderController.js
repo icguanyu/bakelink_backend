@@ -7,6 +7,7 @@ const {
   parseUtcDatetime,
   resolveTimeZone,
   formatDateInTimeZone,
+  formatDatetimeInTimeZone,
 } = require("../utils/datetime");
 
 const ORDER_STATUSES = new Set(["PLACED", "COMPLETED", "CANCELLED"]);
@@ -54,6 +55,18 @@ function mapScheduleDate(row, timeZone) {
   return {
     ...row,
     schedule_date: formatDateInTimeZone(row.schedule_date, timeZone),
+    pickup_time: formatDatetimeInTimeZone(row.pickup_time, timeZone),
+  };
+}
+
+function formatOrderRow(row, timeZone) {
+  if (!row) {
+    return row;
+  }
+
+  return {
+    ...row,
+    pickup_time: formatDatetimeInTimeZone(row.pickup_time, timeZone),
   };
 }
 
@@ -165,23 +178,23 @@ async function list(req, res) {
       total = countResult.rows[0]?.total || 0;
 
       result = await pool.query(
-        `SELECT o.id, o.schedule_id, s.schedule_date, o.status, o.customer_name, o.customer_phone,
-                o.pickup_time, o.note, o.payment_method, o.total_amount, o.created_at, o.updated_at
+        `SELECT o.id, o.schedule_id, s.schedule_date::text AS schedule_date, o.status, o.customer_name, o.customer_phone,
+                o.pickup_time, o.note, o.payment_method, o.total_amount
          FROM orders o
          JOIN schedules s ON s.id = o.schedule_id
          WHERE ${whereSql}
-         ORDER BY o.created_at DESC
+         ORDER BY o.id DESC
          LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
         [...values, limit, offset],
       );
     } else {
       result = await pool.query(
-        `SELECT o.id, o.schedule_id, s.schedule_date, o.status, o.customer_name, o.customer_phone,
-                o.pickup_time, o.note, o.payment_method, o.total_amount, o.created_at, o.updated_at
+        `SELECT o.id, o.schedule_id, s.schedule_date::text AS schedule_date, o.status, o.customer_name, o.customer_phone,
+                o.pickup_time, o.note, o.payment_method, o.total_amount
          FROM orders o
          JOIN schedules s ON s.id = o.schedule_id
          WHERE ${whereSql}
-         ORDER BY o.created_at DESC`,
+         ORDER BY o.id DESC`,
         values,
       );
       total = result.rows.length;
@@ -202,8 +215,8 @@ async function list(req, res) {
 async function getById(req, res) {
   try {
     const orderResult = await pool.query(
-      `SELECT o.id, o.user_id, o.schedule_id, s.schedule_date, o.status, o.customer_name, o.customer_phone,
-              o.pickup_time, o.note, o.payment_method, o.total_amount, o.created_at, o.updated_at
+      `SELECT o.id, o.user_id, o.schedule_id, s.schedule_date::text AS schedule_date, o.status, o.customer_name, o.customer_phone,
+              o.pickup_time, o.note, o.payment_method, o.total_amount
        FROM orders o
        JOIN schedules s ON s.id = o.schedule_id
        WHERE o.id = $1 AND o.user_id = $2`,
@@ -215,10 +228,10 @@ async function getById(req, res) {
     }
 
     const itemResult = await pool.query(
-      `SELECT id, schedule_item_id, product_id, product_name, unit_price, quantity, line_total, created_at, updated_at
+      `SELECT id, schedule_item_id, product_id, product_name, unit_price, quantity, line_total
        FROM order_items
        WHERE order_id = $1
-       ORDER BY created_at ASC`,
+       ORDER BY id ASC`,
       [req.params.id],
     );
 
@@ -266,7 +279,7 @@ async function create(req, res) {
          user_id, schedule_id, status, customer_name, customer_phone, pickup_time, note, payment_method, total_amount
        ) VALUES ($1, $2, 'PLACED', $3, $4, $5, $6, $7, 0)
        RETURNING id, user_id, schedule_id, status, customer_name, customer_phone, pickup_time,
-                 note, payment_method, total_amount, created_at, updated_at`,
+                 note, payment_method, total_amount`,
       [
         req.user.sub,
         payload.schedule_id,
@@ -337,12 +350,13 @@ async function create(req, res) {
        SET total_amount = $1, updated_at = NOW()
        WHERE id = $2
        RETURNING id, user_id, schedule_id, status, customer_name, customer_phone, pickup_time,
-                 note, payment_method, total_amount, created_at, updated_at`,
+                 note, payment_method, total_amount`,
       [totalAmount, order.id],
     );
 
     await client.query("COMMIT");
-    return res.status(201).json(updatedOrderResult.rows[0]);
+    const timeZone = resolveTimeZone(req);
+    return res.status(201).json(formatOrderRow(updatedOrderResult.rows[0], timeZone));
   } catch (error) {
     await client.query("ROLLBACK");
     if (error.message === "SCHEDULE_ITEM_NOT_FOUND") {
@@ -370,13 +384,14 @@ async function updateStatus(req, res) {
        SET status = $1, updated_at = NOW()
        WHERE id = $2 AND user_id = $3
        RETURNING id, user_id, schedule_id, status, customer_name, customer_phone, pickup_time,
-                 note, payment_method, total_amount, created_at, updated_at`,
+                 note, payment_method, total_amount`,
       [status, req.params.id, req.user.sub],
     );
     if (!result.rows[0]) {
       return res.status(404).json({ message: "Order not found" });
     }
-    return res.json(result.rows[0]);
+    const timeZone = resolveTimeZone(req);
+    return res.json(formatOrderRow(result.rows[0], timeZone));
   } catch (error) {
     console.error("PUT /orders/:id/status error:", error.message);
     return res.status(500).json({ message: "Failed to update order status", error: error.message });

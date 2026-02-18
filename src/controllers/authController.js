@@ -23,7 +23,7 @@ async function register(req, res) {
     const result = await pool.query(
       `INSERT INTO users (name, phone, email, password_hash, role)
        VALUES ($1, $2, $3, $4, 'user')
-       RETURNING id, name, phone, email, role, created_at`,
+       RETURNING id, name, phone, email, role`,
       [
         String(name).trim(),
         phone ? String(phone).trim() : null,
@@ -51,7 +51,7 @@ async function login(req, res) {
 
   try {
     const result = await pool.query(
-      `SELECT id, name, phone, email, password_hash, role, created_at
+      `SELECT id, name, phone, email, password_hash, role
        FROM users
        WHERE email = $1`,
       [String(email).trim().toLowerCase()],
@@ -85,7 +85,6 @@ async function login(req, res) {
         phone: user.phone,
         email: user.email,
         role: user.role,
-        created_at: user.created_at,
       },
     });
   } catch (error) {
@@ -97,7 +96,7 @@ async function login(req, res) {
 async function me(req, res) {
   try {
     const result = await pool.query(
-      `SELECT id, name, phone, email, role, created_at
+      `SELECT id, name, phone, email, role
        FROM users
        WHERE id = $1`,
       [req.user.sub],

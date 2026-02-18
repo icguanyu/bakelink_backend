@@ -122,14 +122,14 @@ async function list(req, res) {
         `SELECT p.id, p.category_id, c.name AS category_name,
                 p.name, p.price, p.description, p.ingredients, p.is_active,
                 CASE WHEN array_length(p.image_urls, 1) > 0 THEN p.image_urls[1] ELSE NULL END AS image_url,
-                p.ingredient_details, p.created_at, p.updated_at
+                p.ingredient_details
          FROM products p
          JOIN product_categories c
            ON c.id = p.category_id AND c.user_id = p.user_id
          WHERE p.user_id = $1
            AND ($2 = '' OR p.name ILIKE $3 OR c.name ILIKE $3)
            AND ($4::uuid IS NULL OR p.category_id = $4)
-         ORDER BY p.created_at ASC
+         ORDER BY p.id ASC
          LIMIT $5 OFFSET $6`,
         [req.user.sub, keyword, keywordPattern, categoryId, limit, offset],
       );
@@ -138,14 +138,14 @@ async function list(req, res) {
         `SELECT p.id, p.category_id, c.name AS category_name,
                 p.name, p.price, p.description, p.ingredients, p.is_active,
                 CASE WHEN array_length(p.image_urls, 1) > 0 THEN p.image_urls[1] ELSE NULL END AS image_url,
-                p.ingredient_details, p.created_at, p.updated_at
+                p.ingredient_details
          FROM products p
          JOIN product_categories c
            ON c.id = p.category_id AND c.user_id = p.user_id
          WHERE p.user_id = $1
            AND ($2 = '' OR p.name ILIKE $3 OR c.name ILIKE $3)
            AND ($4::uuid IS NULL OR p.category_id = $4)
-         ORDER BY p.created_at ASC`,
+         ORDER BY p.id ASC`,
         [req.user.sub, keyword, keywordPattern, categoryId],
       );
       total = result.rows.length;
@@ -167,7 +167,7 @@ async function getById(req, res) {
       `SELECT p.id, p.user_id, p.category_id, c.name AS category_name,
               p.name, p.price, p.description, p.ingredients, p.is_active,
               CASE WHEN array_length(p.image_urls, 1) > 0 THEN p.image_urls[1] ELSE NULL END AS image_url,
-              p.ingredient_details, p.created_at, p.updated_at
+              p.ingredient_details
        FROM products p
        JOIN product_categories c
          ON c.id = p.category_id AND c.user_id = p.user_id
@@ -203,7 +203,7 @@ async function create(req, res) {
        RETURNING id, user_id, category_id, name, price, description, ingredients,
                  is_active,
                  CASE WHEN array_length(image_urls, 1) > 0 THEN image_urls[1] ELSE NULL END AS image_url,
-                 ingredient_details, created_at, updated_at`,
+                 ingredient_details`,
       [
         req.user.sub,
         payload.category_id,
@@ -253,7 +253,7 @@ async function update(req, res) {
        RETURNING id, user_id, category_id, name, price, description, ingredients,
                  is_active,
                  CASE WHEN array_length(image_urls, 1) > 0 THEN image_urls[1] ELSE NULL END AS image_url,
-                 ingredient_details, created_at, updated_at`,
+                 ingredient_details`,
       [
         payload.name,
         payload.category_id,

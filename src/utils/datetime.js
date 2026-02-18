@@ -65,4 +65,44 @@ function formatDateInTimeZone(value, timeZone) {
   return `${year}-${month}-${day}`;
 }
 
-module.exports = { parseUtcDatetime, resolveTimeZone, formatDateInTimeZone };
+function formatDatetimeInTimeZone(value, timeZone) {
+  if (!value) {
+    return value;
+  }
+
+  // 如果已經是 YYYY-MM-DD HH:mm:ss 格式，直接回傳
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(value)) {
+    return value;
+  }
+
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
+  const parts = formatter.formatToParts(date);
+  const year = parts.find((part) => part.type === "year")?.value;
+  const month = parts.find((part) => part.type === "month")?.value;
+  const day = parts.find((part) => part.type === "day")?.value;
+  const hour = parts.find((part) => part.type === "hour")?.value;
+  const minute = parts.find((part) => part.type === "minute")?.value;
+  const second = parts.find((part) => part.type === "second")?.value;
+
+  if (!year || !month || !day || !hour || !minute || !second) {
+    return value;
+  }
+
+  return `${year}-${month}-${day} ${hour}:${minute}:${second}`;
+}
+
+module.exports = { parseUtcDatetime, resolveTimeZone, formatDateInTimeZone, formatDatetimeInTimeZone };
