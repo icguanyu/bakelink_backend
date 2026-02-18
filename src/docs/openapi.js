@@ -14,6 +14,7 @@
     { name: "Products", description: "商品 CRUD" },
     { name: "Schedules", description: "接單排程 CRUD 與查詢" },
     { name: "Orders", description: "商家端訂單 CRUD 與狀態管理" },
+    { name: "Upload", description: "圖片上傳" },
   ],
   servers: [{ url: "http://localhost:3000" }],
   components: {
@@ -287,6 +288,12 @@
             description: "訂單狀態",
             example: "COMPLETED",
           },
+        },
+      },
+      UploadFileResponse: {
+        type: "object",
+        properties: {
+          url: { type: "string", example: "https://xxx.supabase.co/storage/v1/object/public/uploads/..." },
         },
       },
       Pagination: {
@@ -804,10 +811,48 @@
         responses: { 200: { description: "更新成功" }, 404: { description: "找不到訂單" } },
       },
     },
+    "/UploadFile": {
+      post: {
+        tags: ["Upload"],
+        summary: "上傳單張圖片",
+        description: "使用 multipart/form-data，上傳欄位名稱為 file。",
+        security: [{ BearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "multipart/form-data": {
+              schema: {
+                type: "object",
+                required: ["file"],
+                properties: {
+                  file: {
+                    type: "string",
+                    format: "binary",
+                    description: "圖片檔案",
+                  },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          201: {
+            description: "上傳成功",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/UploadFileResponse" },
+              },
+            },
+          },
+          400: { description: "請求格式錯誤或檔案不合法" },
+          401: { description: "未授權" },
+          500: { description: "伺服器錯誤" },
+          502: { description: "儲存服務錯誤" },
+        },
+      },
+    },
   },
 };
 
 module.exports = openapi;
-
-
 

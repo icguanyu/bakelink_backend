@@ -24,5 +24,6 @@ app.use("/product-categories", require("./routes/productCategories"));
 app.use("/products", require("./routes/products"));
 app.use("/schedules", require("./routes/schedules"));
 app.use("/orders", require("./routes/orders"));
+app.use("/UploadFile", require("./routes/uploadFile"));
 
 module.exports = app;

@@ -7,6 +7,15 @@ module.exports = {
     secret: process.env.JWT_SECRET || "change_me_in_env",
     expiresIn: process.env.JWT_EXPIRES_IN || "7d",
   },
+  upload: {
+    maxFileSizeBytes: Number(process.env.UPLOAD_MAX_FILE_SIZE_BYTES || 5242880),
+    allowedMimePrefix: process.env.UPLOAD_ALLOWED_MIME_PREFIX || "image/",
+  },
+  supabase: {
+    url: process.env.SUPABASE_URL || "",
+    serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY || "",
+    storageBucket: process.env.SUPABASE_STORAGE_BUCKET || "",
+  },
   pg: {
     host: process.env.PGHOST || "localhost",
     port: Number(process.env.PGPORT || 5432),

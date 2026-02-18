@@ -165,7 +165,7 @@ async function getById(req, res) {
   try {
     const result = await pool.query(
       `SELECT p.id, p.user_id, p.category_id, c.name AS category_name,
-              p.name, p.price, p.description, p.ingredients, p.is_active,
+              p.name, p.price, p.description, p.ingredients, p.is_active, p.image_urls,
               CASE WHEN array_length(p.image_urls, 1) > 0 THEN p.image_urls[1] ELSE NULL END AS image_url,
               p.ingredient_details
        FROM products p
