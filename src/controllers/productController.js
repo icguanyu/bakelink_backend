@@ -3,6 +3,7 @@ const {
   resolvePagination,
   buildListPaginationMeta,
 } = require("../utils/pagination");
+const { normalizeDecimalFields } = require("../utils/number");
 
 function normalizeProductPayload(body = {}) {
   const { name, category_id, price } = body;
@@ -151,8 +152,9 @@ async function list(req, res) {
       total = result.rows.length;
     }
 
+    const data = result.rows.map((row) => normalizeDecimalFields(row, ["price"]));
     res.json({
-      data: result.rows,
+      data,
       pagination: buildListPaginationMeta({ page, limit, total, hasPagination }),
     });
   } catch (error) {
@@ -179,7 +181,7 @@ async function getById(req, res) {
       return res.status(404).json({ message: "Product not found" });
     }
 
-    res.json(result.rows[0]);
+    res.json(normalizeDecimalFields(result.rows[0], ["price"]));
   } catch (error) {
     console.error("GET /products/:id error:", error.message);
     res.status(500).json({ message: "Failed to fetch product", error: error.message });
@@ -217,7 +219,7 @@ async function create(req, res) {
       ],
     );
 
-    res.status(201).json(result.rows[0]);
+    res.status(201).json(normalizeDecimalFields(result.rows[0], ["price"]));
   } catch (error) {
     if (error.code === "23505") {
       return res.status(409).json({ message: "Product already exists" });
@@ -272,7 +274,7 @@ async function update(req, res) {
       return res.status(404).json({ message: "Product not found" });
     }
 
-    res.json(result.rows[0]);
+    res.json(normalizeDecimalFields(result.rows[0], ["price"]));
   } catch (error) {
     if (error.code === "23505") {
       return res.status(409).json({ message: "Product already exists" });

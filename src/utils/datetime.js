@@ -105,4 +105,26 @@ function formatDatetimeInTimeZone(value, timeZone) {
   return `${year}-${month}-${day} ${hour}:${minute}:${second}`;
 }
 
-module.exports = { parseUtcDatetime, resolveTimeZone, formatDateInTimeZone, formatDatetimeInTimeZone };
+function formatTimeToHHmm(value) {
+  if (!value) {
+    return value;
+  }
+
+  const raw = String(value).trim();
+  const match = raw.match(/^([01]?\d|2[0-3]):([0-5]\d)(?::[0-5]\d(?:\.\d+)?)?$/);
+  if (!match) {
+    return value;
+  }
+
+  const hour = match[1].padStart(2, "0");
+  const minute = match[2];
+  return `${hour}:${minute}`;
+}
+
+module.exports = {
+  parseUtcDatetime,
+  resolveTimeZone,
+  formatDateInTimeZone,
+  formatDatetimeInTimeZone,
+  formatTimeToHHmm,
+};

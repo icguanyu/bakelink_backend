@@ -8,7 +8,9 @@ const {
   resolveTimeZone,
   formatDateInTimeZone,
   formatDatetimeInTimeZone,
+  formatTimeToHHmm,
 } = require("../utils/datetime");
+const { normalizeDecimalFields } = require("../utils/number");
 
 const SCHEDULE_STATUSES = new Set(["DRAFT", "ANNOUNCED", "OPEN", "CLOSED", "FULFILLED"]);
 
@@ -369,9 +371,11 @@ async function getByDate(req, res) {
 
     // 查詢行程基本資料
     const scheduleResult = await pool.query(
-      `SELECT id, user_id, schedule_date::text AS schedule_date, status, order_start_at, order_end_at, note
-       FROM schedules
-       WHERE schedule_date = $1 AND user_id = $2`,
+      `SELECT s.id, s.user_id, s.schedule_date::text AS schedule_date, s.status, s.order_start_at, s.order_end_at, s.note,
+              (SELECT COUNT(*)::int FROM schedule_items si WHERE si.schedule_id = s.id) AS item_count,
+              (SELECT COUNT(*)::int FROM orders o WHERE o.schedule_id = s.id) AS order_count
+       FROM schedules s
+       WHERE s.schedule_date = $1 AND s.user_id = $2`,
       [scheduleDate, req.user.sub],
     );
 
@@ -388,11 +392,59 @@ async function getByDate(req, res) {
        ORDER BY id ASC`,
       [scheduleId],
     );
+    const scheduleItems = itemsResult.rows.map((item) =>
+      normalizeDecimalFields(item, ["unit_price"]),
+    );
+
+    const ordersResult = await pool.query(
+      `SELECT id, order_no, status, customer_name, customer_phone, pickup_time, note, payment_method, total_amount, created_at
+       FROM orders
+       WHERE schedule_id = $1 AND user_id = $2
+       ORDER BY created_at DESC`,
+      [scheduleId, req.user.sub],
+    );
+
+    let orderItemsByOrderId = new Map();
+    if (ordersResult.rows.length > 0) {
+      const orderIds = ordersResult.rows.map((row) => row.id);
+      const orderItemsResult = await pool.query(
+        `SELECT order_id, id, schedule_item_id, product_id, product_name, unit_price, quantity, line_total
+         FROM order_items
+         WHERE order_id = ANY($1::uuid[])
+         ORDER BY id ASC`,
+        [orderIds],
+      );
+
+      orderItemsByOrderId = orderItemsResult.rows.reduce((acc, row) => {
+        if (!acc.has(row.order_id)) {
+          acc.set(row.order_id, []);
+        }
+        acc.get(row.order_id).push({
+          id: row.id,
+          schedule_item_id: row.schedule_item_id,
+          product_id: row.product_id,
+          product_name: row.product_name,
+          unit_price: row.unit_price,
+          quantity: row.quantity,
+          line_total: row.line_total,
+        });
+        return acc;
+      }, new Map());
+    }
+
+    const orders = ordersResult.rows.map((row) => ({
+      ...normalizeDecimalFields(row, ["total_amount"]),
+      pickup_time: formatTimeToHHmm(row.pickup_time),
+      items: (orderItemsByOrderId.get(row.id) || []).map((item) =>
+        normalizeDecimalFields(item, ["unit_price", "line_total"]),
+      ),
+    }));
 
     const timeZone = resolveTimeZone(req);
     return res.json({
       ...mapScheduleDate(scheduleResult.rows[0], timeZone),
-      items: itemsResult.rows,
+      items: scheduleItems,
+      orders,
     });
   } catch (error) {
     console.error("GET /schedules/:date error:", error.message);

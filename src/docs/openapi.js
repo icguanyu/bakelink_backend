@@ -256,9 +256,51 @@
           },
           pickup_time: {
             type: "string",
-            format: "date-time",
-            description: "預計取貨時間",
-            example: "2026-02-17T12:30:00.000Z",
+            description: "預計取貨時間（HH:mm）",
+            example: "12:30",
+          },
+          note: {
+            type: "string",
+            nullable: true,
+            description: "備註",
+            example: "請幫我分裝",
+          },
+          payment_method: {
+            type: "string",
+            description: "付款方式",
+            example: "cash",
+          },
+          items: {
+            type: "array",
+            minItems: 1,
+            items: { $ref: "#/components/schemas/OrderItemBody" },
+          },
+        },
+      },
+      UpdateOrderBody: {
+        type: "object",
+        required: [
+          "customer_name",
+          "customer_phone",
+          "pickup_time",
+          "payment_method",
+          "items",
+        ],
+        properties: {
+          customer_name: {
+            type: "string",
+            description: "訂購者姓名",
+            example: "王小明",
+          },
+          customer_phone: {
+            type: "string",
+            description: "訂購者電話",
+            example: "0912345678",
+          },
+          pickup_time: {
+            type: "string",
+            description: "預計取貨時間（HH:mm）",
+            example: "12:30",
           },
           note: {
             type: "string",
@@ -774,6 +816,31 @@
         ],
         responses: { 200: { description: "成功" }, 404: { description: "找不到訂單" } },
       },
+      put: {
+        tags: ["Orders"],
+        summary: "編輯訂單",
+        security: [{ BearerAuth: [] }],
+        parameters: [
+          {
+            name: "id",
+            in: "path",
+            required: true,
+            schema: { type: "string", format: "uuid" },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": { schema: { $ref: "#/components/schemas/UpdateOrderBody" } },
+          },
+        },
+        responses: {
+          200: { description: "更新成功" },
+          400: { description: "請求資料不正確" },
+          404: { description: "找不到訂單" },
+          409: { description: "訂單狀態、接單排程狀態或銷售上限衝突" },
+        },
+      },
       delete: {
         tags: ["Orders"],
         summary: "刪除訂單",
@@ -855,4 +922,3 @@
 };
 
 module.exports = openapi;
-
