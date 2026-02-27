@@ -1016,6 +1016,46 @@
         },
       },
     },
+    "/UploadAvatar": {
+      post: {
+        tags: ["Upload"],
+        summary: "上傳使用者頭像",
+        description: "使用 multipart/form-data，上傳欄位名稱為 file。",
+        security: [{ BearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "multipart/form-data": {
+              schema: {
+                type: "object",
+                required: ["file"],
+                properties: {
+                  file: {
+                    type: "string",
+                    format: "binary",
+                    description: "頭像圖片檔案",
+                  },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          201: {
+            description: "上傳成功",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/UploadFileResponse" },
+              },
+            },
+          },
+          400: { description: "請求格式錯誤或檔案不合法" },
+          401: { description: "未授權" },
+          500: { description: "伺服器錯誤" },
+          502: { description: "儲存服務錯誤" },
+        },
+      },
+    },
   },
 };
 
