@@ -1,0 +1,16 @@
+ALTER TABLE users
+  ADD COLUMN IF NOT EXISTS avatar TEXT,
+  ADD COLUMN IF NOT EXISTS shop_name VARCHAR(100),
+  ADD COLUMN IF NOT EXISTS owner_name VARCHAR(100),
+  ADD COLUMN IF NOT EXISTS address TEXT,
+  ADD COLUMN IF NOT EXISTS intro TEXT,
+  ADD COLUMN IF NOT EXISTS order_pickup_time TIME,
+  ADD COLUMN IF NOT EXISTS payment_methods TEXT[],
+  ADD COLUMN IF NOT EXISTS pickup_methods TEXT[],
+  ADD COLUMN IF NOT EXISTS shipping_free_threshold NUMERIC(12, 2),
+  ADD COLUMN IF NOT EXISTS shipping_fee NUMERIC(12, 2),
+  ADD COLUMN IF NOT EXISTS shipping_note TEXT,
+  ADD COLUMN IF NOT EXISTS packaging_default_pack TEXT,
+  ADD COLUMN IF NOT EXISTS packaging_pack_fee NUMERIC(12, 2),
+  ADD COLUMN IF NOT EXISTS packaging_eco_discount NUMERIC(12, 2),
+  ADD COLUMN IF NOT EXISTS packaging_note TEXT;

@@ -72,6 +72,53 @@
         },
         description: "登入請求資料",
       },
+      UserSettingsBody: {
+        type: "object",
+        properties: {
+          avatar: { type: "string", description: "商家頭像 URL", example: "" },
+          shopName: { type: "string", description: "店名", example: "山丘烘焙坊" },
+          owner: { type: "string", description: "負責人名稱", example: "王麵麥" },
+          phone: { type: "string", description: "電話", example: "02-1234-5678" },
+          email: { type: "string", description: "電子郵件", example: "hello@bakery.test" },
+          address: { type: "string", description: "地址", example: "台北市中山區麵包路 123 號" },
+          intro: {
+            type: "string",
+            description: "店家簡介",
+            example: "每日現烤小麥香，主打酸種、歐包與早午餐。",
+          },
+          orderPickupTime: { type: "string", description: "預設取貨時間（HH:mm）", example: "14:00" },
+          paymentMethods: {
+            type: "array",
+            items: { type: "string" },
+            description: "付款方式",
+            example: ["cash"],
+          },
+          pickupMethods: {
+            type: "array",
+            items: { type: "string" },
+            description: "取貨方式",
+            example: ["pickup", "delivery"],
+          },
+          shipping: {
+            type: "object",
+            properties: {
+              freeThreshold: { type: "number", description: "免運門檻", example: 800 },
+              fee: { type: "number", description: "運費", example: 100 },
+              note: { type: "string", description: "運費備註", example: "滿 $800 免運費" },
+            },
+          },
+          packaging: {
+            type: "object",
+            properties: {
+              defaultPack: { type: "string", description: "包裝方式", example: "紙袋" },
+              packFee: { type: "number", description: "包裝費", example: 5 },
+              ecoDiscount: { type: "number", description: "環保折扣", example: 10 },
+              note: { type: "string", description: "包裝備註", example: "歡迎自備容器" },
+            },
+          },
+        },
+        description: "店家設定資料",
+      },
       CategoryBody: {
         type: "object",
         required: ["name"],
@@ -415,6 +462,57 @@
           200: { description: "成功" },
           401: { description: "未授權" },
           403: { description: "禁止存取" },
+        },
+      },
+    },
+    "/users/me": {
+      get: {
+        tags: ["Users"],
+        summary: "取得目前店家設定",
+        security: [{ BearerAuth: [] }],
+        responses: {
+          200: {
+            description: "成功",
+            content: {
+              "application/json": { schema: { $ref: "#/components/schemas/UserSettingsBody" } },
+            },
+          },
+          401: { description: "未授權" },
+          404: { description: "找不到使用者" },
+        },
+      },
+      put: {
+        tags: ["Users"],
+        summary: "更新店家設定（完整或局部）",
+        security: [{ BearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": { schema: { $ref: "#/components/schemas/UserSettingsBody" } },
+          },
+        },
+        responses: {
+          200: { description: "更新成功" },
+          400: { description: "請求資料不正確" },
+          401: { description: "未授權" },
+          409: { description: "Email 已存在" },
+        },
+      },
+      patch: {
+        tags: ["Users"],
+        summary: "更新店家設定（局部）",
+        security: [{ BearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": { schema: { $ref: "#/components/schemas/UserSettingsBody" } },
+          },
+        },
+        responses: {
+          200: { description: "更新成功" },
+          400: { description: "請求資料不正確" },
+          401: { description: "未授權" },
+          409: { description: "Email 已存在" },
         },
       },
     },

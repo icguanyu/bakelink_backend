@@ -155,36 +155,102 @@ async function upsertScheduleItems(client, userId, scheduleId, items) {
     return;
   }
 
-  await client.query(`DELETE FROM schedule_items WHERE schedule_id = $1`, [scheduleId]);
-  if (items.length === 0) {
-    return;
-  }
-
-  const productIds = items.map((item) => item.product_id);
-  const productResult = await client.query(
-    `SELECT id, name, price
-     FROM products
-     WHERE user_id = $1
-       AND id = ANY($2::uuid[])
-       AND is_active = TRUE`,
-    [userId, productIds],
+  const existingResult = await client.query(
+    `SELECT id, product_id, product_name, sales_limit
+     FROM schedule_items
+     WHERE schedule_id = $1`,
+    [scheduleId],
   );
+  const existingByProductId = new Map(
+    existingResult.rows.map((row) => [row.product_id, row]),
+  );
+  const existingById = new Map(existingResult.rows.map((row) => [row.id, row]));
 
-  if (productResult.rows.length !== productIds.length) {
-    throw new Error("SOME_PRODUCTS_NOT_FOUND");
+  const referencedResult = await client.query(
+    `SELECT DISTINCT oi.schedule_item_id
+     FROM order_items oi
+     INNER JOIN schedule_items si ON si.id = oi.schedule_item_id
+     WHERE si.schedule_id = $1`,
+    [scheduleId],
+  );
+  const referencedIds = new Set(referencedResult.rows.map((row) => row.schedule_item_id));
+
+  const payloadByProductId = new Map(items.map((item) => [item.product_id, item]));
+
+  const lockedNames = new Set();
+  for (const [id, row] of existingById.entries()) {
+    if (!referencedIds.has(id)) {
+      continue;
+    }
+    const payloadItem = payloadByProductId.get(row.product_id);
+    if (!payloadItem) {
+      lockedNames.add(row.product_name || row.product_id);
+      continue;
+    }
+    const payloadLimit = payloadItem.sales_limit ?? null;
+    const existingLimit = row.sales_limit ?? null;
+    if (payloadLimit !== existingLimit) {
+      lockedNames.add(row.product_name || row.product_id);
+    }
+  }
+  if (lockedNames.size > 0) {
+    const names = Array.from(lockedNames).join(", ");
+    throw new Error(`SCHEDULE_ITEM_LOCKED:${names}`);
   }
 
-  const productMap = new Map(productResult.rows.map((row) => [row.id, row]));
-  for (const item of items) {
-    const product = productMap.get(item.product_id);
-    if (!product) {
+  const itemsToUpsert = items.filter((item) => {
+    const existing = existingByProductId.get(item.product_id);
+    return !existing || !referencedIds.has(existing.id);
+  });
+
+  if (itemsToUpsert.length > 0) {
+    const productIds = itemsToUpsert.map((item) => item.product_id);
+    const productResult = await client.query(
+      `SELECT id, name, price
+       FROM products
+       WHERE user_id = $1
+         AND id = ANY($2::uuid[])
+         AND is_active = TRUE`,
+      [userId, productIds],
+    );
+
+    if (productResult.rows.length !== productIds.length) {
       throw new Error("SOME_PRODUCTS_NOT_FOUND");
     }
-    await client.query(
-      `INSERT INTO schedule_items (schedule_id, user_id, product_id, product_name, unit_price, sales_limit)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [scheduleId, userId, item.product_id, product.name, product.price, item.sales_limit],
-    );
+
+    const productMap = new Map(productResult.rows.map((row) => [row.id, row]));
+    for (const item of itemsToUpsert) {
+      const product = productMap.get(item.product_id);
+      if (!product) {
+        throw new Error("SOME_PRODUCTS_NOT_FOUND");
+      }
+      const existing = existingByProductId.get(item.product_id);
+      if (existing) {
+        await client.query(
+          `UPDATE schedule_items
+           SET product_name = $1, unit_price = $2, sales_limit = $3
+           WHERE id = $4`,
+          [product.name, product.price, item.sales_limit, existing.id],
+        );
+      } else {
+        await client.query(
+          `INSERT INTO schedule_items (schedule_id, user_id, product_id, product_name, unit_price, sales_limit)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [scheduleId, userId, item.product_id, product.name, product.price, item.sales_limit],
+        );
+      }
+    }
+  }
+
+  const productIdsToKeep = new Set(items.map((item) => item.product_id));
+  const deletableIds = [];
+  for (const row of existingResult.rows) {
+    if (!productIdsToKeep.has(row.product_id) && !referencedIds.has(row.id)) {
+      deletableIds.push(row.id);
+    }
+  }
+  if (deletableIds.length > 0) {
+    await client.query(`DELETE FROM schedule_items WHERE id = ANY($1::uuid[])`, [deletableIds]);
   }
 }
 
@@ -496,6 +562,13 @@ async function create(req, res) {
     if (error.message === "SOME_PRODUCTS_NOT_FOUND") {
       return res.status(400).json({ message: "Some products are invalid or inactive" });
     }
+    if (error.message && error.message.startsWith("SCHEDULE_ITEM_LOCKED")) {
+      const names = error.message.split(":").slice(1).join(":");
+      return res.status(409).json({
+        message: "Cannot remove or change schedule items that already have orders",
+        locked_items: names ? names.split(", ").filter(Boolean) : [],
+      });
+    }
     console.error("POST /schedules error:", error.message);
     return res.status(500).json({ message: "Failed to create schedule", error: error.message });
   } finally {
@@ -582,6 +655,13 @@ async function update(req, res) {
     }
     if (error.message === "SOME_PRODUCTS_NOT_FOUND") {
       return res.status(400).json({ message: "Some products are invalid or inactive" });
+    }
+    if (error.message && error.message.startsWith("SCHEDULE_ITEM_LOCKED")) {
+      const names = error.message.split(":").slice(1).join(":");
+      return res.status(409).json({
+        message: "Cannot remove or change schedule items that already have orders",
+        locked_items: names ? names.split(", ").filter(Boolean) : [],
+      });
     }
     console.error("PUT /schedules/:id error:", error.message);
     return res.status(500).json({ message: "Failed to update schedule", error: error.message });
