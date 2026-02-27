@@ -116,6 +116,33 @@
               note: { type: "string", description: "包裝備註", example: "歡迎自備容器" },
             },
           },
+          businessHours: {
+            type: "array",
+            description: "營業時間",
+            items: {
+              type: "object",
+              required: ["day", "enabled", "time"],
+              properties: {
+                day: { type: "integer", description: "0=日, 1=一, ..., 6=六", example: 1 },
+                enabled: { type: "boolean", example: true },
+                time: {
+                  type: "array",
+                  items: { type: "string", example: "09:00" },
+                  minItems: 2,
+                  maxItems: 2,
+                },
+              },
+            },
+            example: [
+              { day: 1, enabled: true, time: ["09:00", "18:00"] },
+              { day: 2, enabled: true, time: ["09:00", "18:00"] },
+              { day: 3, enabled: true, time: ["09:00", "18:00"] },
+              { day: 4, enabled: true, time: ["09:00", "18:00"] },
+              { day: 5, enabled: true, time: ["09:00", "18:00"] },
+              { day: 6, enabled: false, time: ["10:00", "16:00"] },
+              { day: 0, enabled: false, time: ["10:00", "16:00"] },
+            ],
+          },
         },
         description: "店家設定資料",
       },

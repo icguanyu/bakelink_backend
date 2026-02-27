@@ -13,4 +13,5 @@ ALTER TABLE users
   ADD COLUMN IF NOT EXISTS packaging_default_pack TEXT,
   ADD COLUMN IF NOT EXISTS packaging_pack_fee NUMERIC(12, 2),
   ADD COLUMN IF NOT EXISTS packaging_eco_discount NUMERIC(12, 2),
-  ADD COLUMN IF NOT EXISTS packaging_note TEXT;
+  ADD COLUMN IF NOT EXISTS packaging_note TEXT,
+  ADD COLUMN IF NOT EXISTS business_hours JSONB;

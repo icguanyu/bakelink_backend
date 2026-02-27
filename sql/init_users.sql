@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS users (
   packaging_pack_fee NUMERIC(12, 2),
   packaging_eco_discount NUMERIC(12, 2),
   packaging_note TEXT,
+  business_hours JSONB,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -82,6 +83,9 @@ ADD COLUMN IF NOT EXISTS packaging_eco_discount NUMERIC(12, 2);
 
 ALTER TABLE users
 ADD COLUMN IF NOT EXISTS packaging_note TEXT;
+
+ALTER TABLE users
+ADD COLUMN IF NOT EXISTS business_hours JSONB;
 
 INSERT INTO users (name, phone, email, role)
 VALUES

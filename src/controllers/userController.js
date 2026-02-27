@@ -32,6 +32,52 @@ function normalizeNullableNumber(value, fieldName) {
   return { value: num };
 }
 
+function normalizeBusinessHours(value) {
+  if (value == null) {
+    return { value: null };
+  }
+  if (!Array.isArray(value)) {
+    return { error: "businessHours must be an array" };
+  }
+
+  const normalized = value.map((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      return { __invalid: "businessHours item must be an object" };
+    }
+    const dayValue = Number(item.day);
+    if (!Number.isInteger(dayValue) || dayValue < 0 || dayValue > 6) {
+      return { __invalid: "businessHours.day must be an integer between 0 and 6" };
+    }
+    if (typeof item.enabled !== "boolean") {
+      return { __invalid: "businessHours.enabled must be boolean" };
+    }
+    if (!Array.isArray(item.time) || item.time.length !== 2) {
+      return { __invalid: "businessHours.time must be [start, end]" };
+    }
+    const [start, end] = item.time;
+    const startText = String(start || "").trim();
+    const endText = String(end || "").trim();
+    if (!/^([01]?\d|2[0-3]):[0-5]\d$/.test(startText)) {
+      return { __invalid: "businessHours.time start must be HH:mm" };
+    }
+    if (!/^([01]?\d|2[0-3]):[0-5]\d$/.test(endText)) {
+      return { __invalid: "businessHours.time end must be HH:mm" };
+    }
+    return {
+      day: dayValue,
+      enabled: item.enabled,
+      time: [startText, endText],
+    };
+  });
+
+  const invalid = normalized.find((item) => item.__invalid);
+  if (invalid) {
+    return { error: invalid.__invalid };
+  }
+
+  return { value: normalized };
+}
+
 function normalizeUserSettingsPayload(body = {}, { partial = false } = {}) {
   const result = {};
 
@@ -152,6 +198,14 @@ function normalizeUserSettingsPayload(body = {}, { partial = false } = {}) {
     }
   }
 
+  if (!partial || body.businessHours != null) {
+    const normalized = normalizeBusinessHours(body.businessHours);
+    if (normalized.error) {
+      return { error: normalized.error };
+    }
+    result.business_hours = normalized.value;
+  }
+
   return { value: result };
 }
 
@@ -190,6 +244,7 @@ function mapUserSettingsRow(row) {
       ecoDiscount: normalized.packaging_eco_discount ?? null,
       note: toText(normalized.packaging_note),
     },
+    businessHours: normalized.business_hours || [],
   };
 }
 
@@ -217,7 +272,8 @@ async function getMe(req, res) {
               avatar, shop_name, owner_name, address, intro, order_pickup_time,
               payment_methods, pickup_methods,
               shipping_free_threshold, shipping_fee, shipping_note,
-              packaging_default_pack, packaging_pack_fee, packaging_eco_discount, packaging_note
+              packaging_default_pack, packaging_pack_fee, packaging_eco_discount, packaging_note,
+              business_hours
        FROM users
        WHERE id = $1`,
       [req.user.sub],
@@ -301,6 +357,10 @@ async function updateMe(req, res) {
   if (Object.prototype.hasOwnProperty.call(payload, "packaging_note")) {
     assign("packaging_note", payload.packaging_note);
   }
+  if (Object.prototype.hasOwnProperty.call(payload, "business_hours")) {
+    fields.push(`business_hours = $${paramIndex++}::jsonb`);
+    values.push(payload.business_hours == null ? null : JSON.stringify(payload.business_hours));
+  }
 
   try {
     let result;
@@ -314,7 +374,8 @@ async function updateMe(req, res) {
                    avatar, shop_name, owner_name, address, intro, order_pickup_time,
                    payment_methods, pickup_methods,
                    shipping_free_threshold, shipping_fee, shipping_note,
-                   packaging_default_pack, packaging_pack_fee, packaging_eco_discount, packaging_note`,
+                   packaging_default_pack, packaging_pack_fee, packaging_eco_discount, packaging_note,
+                   business_hours`,
         [...values, req.user.sub],
       );
     } else {
@@ -323,7 +384,8 @@ async function updateMe(req, res) {
                 avatar, shop_name, owner_name, address, intro, order_pickup_time,
                 payment_methods, pickup_methods,
                 shipping_free_threshold, shipping_fee, shipping_note,
-                packaging_default_pack, packaging_pack_fee, packaging_eco_discount, packaging_note
+                packaging_default_pack, packaging_pack_fee, packaging_eco_discount, packaging_note,
+                business_hours
          FROM users
          WHERE id = $1`,
         [req.user.sub],
