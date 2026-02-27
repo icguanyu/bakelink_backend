@@ -140,7 +140,10 @@ function normalizeUserSettingsPayload(body = {}, { partial = false } = {}) {
       return { error: "shipping must be an object" };
     } else {
       if (Object.prototype.hasOwnProperty.call(body.shipping, "freeThreshold")) {
-        const normalized = normalizeNullableNumber(body.shipping.freeThreshold, "shipping.freeThreshold");
+        const normalized = normalizeNullableNumber(
+          body.shipping.freeThreshold,
+          "shipping.freeThreshold",
+        );
         if (normalized.error) {
           return { error: normalized.error };
         }
@@ -259,7 +262,7 @@ async function list(req, res) {
   } catch (error) {
     console.error("GET /users error:", error.message);
     res.status(500).json({
-      message: "資料庫查詢失敗，請檢查 PostgreSQL 設定。",
+      message: "Failed to fetch users",
       error: error.message,
     });
   }
@@ -308,6 +311,7 @@ async function updateMe(req, res) {
 
   if (Object.prototype.hasOwnProperty.call(payload, "avatar")) {
     assign("avatar", payload.avatar);
+    assign("avatar_object_path", null);
   }
   if (Object.prototype.hasOwnProperty.call(payload, "shop_name")) {
     assign("shop_name", payload.shop_name);

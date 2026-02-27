@@ -406,7 +406,7 @@ async function create(req, res) {
         throw new Error("SCHEDULE_ITEM_NOT_FOUND");
       }
 
-      if (scheduleItem.sales_limit != null) {
+      if (Number(scheduleItem.sales_limit) > 0) {
         const soldResult = await client.query(
           `SELECT COALESCE(SUM(oi.quantity), 0)::int AS sold_qty
            FROM order_items oi
@@ -533,7 +533,7 @@ async function update(req, res) {
         throw new Error("SCHEDULE_ITEM_NOT_FOUND");
       }
 
-      if (scheduleItem.sales_limit != null) {
+      if (Number(scheduleItem.sales_limit) > 0) {
         const soldResult = await client.query(
           `SELECT COALESCE(SUM(oi.quantity), 0)::int AS sold_qty
            FROM order_items oi
