@@ -386,10 +386,12 @@ async function getByDate(req, res) {
 
     const scheduleId = scheduleResult.rows[0].id;
     const itemsResult = await pool.query(
-      `SELECT id, product_id, product_name, unit_price, sales_limit
-       FROM schedule_items
-       WHERE schedule_id = $1
-       ORDER BY id ASC`,
+      `SELECT si.id, si.product_id, si.product_name, si.unit_price, si.sales_limit,
+              CASE WHEN array_length(p.image_urls, 1) > 0 THEN p.image_urls[1] ELSE NULL END AS image_url
+       FROM schedule_items si
+       LEFT JOIN products p ON p.id = si.product_id AND p.user_id = si.user_id
+       WHERE si.schedule_id = $1
+       ORDER BY si.id ASC`,
       [scheduleId],
     );
     const scheduleItems = itemsResult.rows.map((item) =>
