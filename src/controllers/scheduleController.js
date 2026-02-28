@@ -456,10 +456,18 @@ async function getByDate(req, res) {
               si.product_name,
               si.unit_price,
               si.sales_limit,
+              COALESCE(sold.ordered_quantity, 0)::int AS ordered_quantity,
               p.image_urls,
               CASE WHEN array_length(p.image_urls, 1) > 0 THEN p.image_urls[1] ELSE NULL END AS image_url
        FROM schedule_items si
        LEFT JOIN products p ON p.id = si.product_id
+       LEFT JOIN (
+         SELECT oi.schedule_item_id, SUM(oi.quantity)::int AS ordered_quantity
+         FROM order_items oi
+         INNER JOIN orders o ON o.id = oi.order_id
+         WHERE o.status IN ('PLACED', 'COMPLETED')
+         GROUP BY oi.schedule_item_id
+       ) sold ON sold.schedule_item_id = si.id
        WHERE si.schedule_id = $1
        ORDER BY si.id ASC`,
       [scheduleId],
@@ -469,7 +477,7 @@ async function getByDate(req, res) {
     );
 
     const ordersResult = await pool.query(
-      `SELECT id, order_no, status, customer_name, customer_phone, pickup_time, note, payment_method, total_amount, created_at
+      `SELECT id, order_no, status, customer_name, customer_phone, customer_address, pickup_time, note, payment_method, bring_own_bag, pickup_method, total_amount, created_at
        FROM orders
        WHERE schedule_id = $1 AND user_id = $2
        ORDER BY created_at DESC`,
@@ -480,7 +488,7 @@ async function getByDate(req, res) {
     if (ordersResult.rows.length > 0) {
       const orderIds = ordersResult.rows.map((row) => row.id);
       const orderItemsResult = await pool.query(
-        `SELECT order_id, id, schedule_item_id, product_id, product_name, unit_price, quantity, line_total
+        `SELECT order_id, id, schedule_item_id, product_id, product_name, unit_price, quantity, is_sliced, line_total
          FROM order_items
          WHERE order_id = ANY($1::uuid[])
          ORDER BY id ASC`,
@@ -498,6 +506,7 @@ async function getByDate(req, res) {
           product_name: row.product_name,
           unit_price: row.unit_price,
           quantity: row.quantity,
+          is_sliced: row.is_sliced,
           line_total: row.line_total,
         });
         return acc;
@@ -507,6 +516,7 @@ async function getByDate(req, res) {
     const orders = ordersResult.rows.map((row) => ({
       ...normalizeDecimalFields(row, ["total_amount"]),
       pickup_time: formatTimeToHHmm(row.pickup_time),
+      pickup_method: row.pickup_method == null ? row.pickup_method : String(row.pickup_method).toLowerCase(),
       items: (orderItemsByOrderId.get(row.id) || []).map((item) =>
         normalizeDecimalFields(item, ["unit_price", "line_total"]),
       ),

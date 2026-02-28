@@ -11,6 +11,7 @@ const {
 const { normalizeDecimalFields } = require("../utils/number");
 
 const ORDER_STATUSES = new Set(["PLACED", "COMPLETED", "CANCELLED"]);
+const PICKUP_METHODS = new Set(["PICKUP", "DELIVERY"]);
 
 function normalizeOrderStatus(value) {
   const status = String(value || "").trim().toUpperCase();
@@ -18,6 +19,43 @@ function normalizeOrderStatus(value) {
     return null;
   }
   return status;
+}
+
+function normalizeBooleanField(value, fieldName, { defaultValue, allowMissing = false } = {}) {
+  if (value == null) {
+    if (allowMissing) {
+      return { value: undefined };
+    }
+    return { value: defaultValue };
+  }
+  if (typeof value !== "boolean") {
+    return { error: `${fieldName} must be a boolean` };
+  }
+  return { value };
+}
+
+function normalizePickupMethod(value, { defaultValue = "PICKUP", allowMissing = false } = {}) {
+  if (value == null) {
+    if (allowMissing) {
+      return { value: undefined };
+    }
+    return { value: defaultValue };
+  }
+
+  const raw = String(value).trim();
+  const normalized = raw.toUpperCase();
+  const aliasMap = {
+    PICKUP: "PICKUP",
+    SELF_PICKUP: "PICKUP",
+    DELIVERY: "DELIVERY",
+    "\u81ea\u53d6": "PICKUP",
+    "\u5b85\u914d": "DELIVERY",
+  };
+  const method = aliasMap[normalized] || aliasMap[raw];
+  if (!method || !PICKUP_METHODS.has(method)) {
+    return { error: "pickup_method must be PICKUP or DELIVERY" };
+  }
+  return { value: method };
 }
 
 function normalizeOrderItemInput(item) {
@@ -37,12 +75,19 @@ function normalizeOrderItemInput(item) {
   if (!scheduleItemId && !productId) {
     return { error: "item.schedule_item_id or item.product_id is required" };
   }
+  const isSliced = normalizeBooleanField(item.is_sliced, "item.is_sliced", {
+    defaultValue: false,
+  });
+  if (isSliced.error) {
+    return { error: isSliced.error };
+  }
 
   return {
     value: {
       schedule_item_id: scheduleItemId || null,
       product_id: productId || null,
       quantity,
+      is_sliced: isSliced.value,
     },
   };
 }
@@ -52,10 +97,15 @@ function mapScheduleDate(row, timeZone) {
     return row;
   }
 
+  const pickupMethod = row.pickup_method == null
+    ? row.pickup_method
+    : String(row.pickup_method).toLowerCase();
+
   return {
     ...normalizeDecimalFields(row, ["total_amount"]),
     schedule_date: formatDateInTimeZone(row.schedule_date, timeZone),
     pickup_time: formatTimeToHHmm(row.pickup_time),
+    pickup_method: pickupMethod,
   };
 }
 
@@ -64,9 +114,14 @@ function formatOrderRow(row, timeZone) {
     return row;
   }
 
+  const pickupMethod = row.pickup_method == null
+    ? row.pickup_method
+    : String(row.pickup_method).toLowerCase();
+
   return {
     ...normalizeDecimalFields(row, ["total_amount"]),
     pickup_time: formatTimeToHHmm(row.pickup_time),
+    pickup_method: pickupMethod,
   };
 }
 
@@ -88,8 +143,21 @@ function normalizeCreateOrderPayload(body = {}) {
   const scheduleId = String(body.schedule_id || "").trim();
   const customerName = String(body.customer_name || "").trim();
   const customerPhone = String(body.customer_phone || "").trim();
+  const customerAddress = body.customer_address == null
+    ? null
+    : String(body.customer_address).trim() || null;
   const paymentMethod = String(body.payment_method || "").trim();
   const note = body.note == null ? null : String(body.note).trim() || null;
+  const bringOwnBag = normalizeBooleanField(body.bring_own_bag, "bring_own_bag", {
+    defaultValue: false,
+  });
+  if (bringOwnBag.error) {
+    return { error: bringOwnBag.error };
+  }
+  const pickupMethod = normalizePickupMethod(body.pickup_method, { defaultValue: "PICKUP" });
+  if (pickupMethod.error) {
+    return { error: pickupMethod.error };
+  }
 
   if (!scheduleId) {
     return { error: "schedule_id is required" };
@@ -132,9 +200,12 @@ function normalizeCreateOrderPayload(body = {}) {
       schedule_id: scheduleId,
       customer_name: customerName,
       customer_phone: customerPhone,
+      customer_address: customerAddress,
       pickup_time: pickupTime,
       note,
       payment_method: paymentMethod,
+      bring_own_bag: bringOwnBag.value,
+      pickup_method: pickupMethod.value,
       items,
     },
   };
@@ -143,8 +214,21 @@ function normalizeCreateOrderPayload(body = {}) {
 function normalizeUpdateOrderPayload(body = {}) {
   const customerName = String(body.customer_name || "").trim();
   const customerPhone = String(body.customer_phone || "").trim();
+  const customerAddress = body.customer_address == null
+    ? null
+    : String(body.customer_address).trim() || null;
   const paymentMethod = String(body.payment_method || "").trim();
   const note = body.note == null ? null : String(body.note).trim() || null;
+  const bringOwnBag = normalizeBooleanField(body.bring_own_bag, "bring_own_bag", {
+    allowMissing: true,
+  });
+  if (bringOwnBag.error) {
+    return { error: bringOwnBag.error };
+  }
+  const pickupMethod = normalizePickupMethod(body.pickup_method, { allowMissing: true });
+  if (pickupMethod.error) {
+    return { error: pickupMethod.error };
+  }
 
   if (!customerName) {
     return { error: "customer_name is required" };
@@ -182,9 +266,12 @@ function normalizeUpdateOrderPayload(body = {}) {
     value: {
       customer_name: customerName,
       customer_phone: customerPhone,
+      customer_address: customerAddress,
       pickup_time: pickupTime,
       note,
       payment_method: paymentMethod,
+      bring_own_bag: bringOwnBag.value,
+      pickup_method: pickupMethod.value,
       items,
     },
   };
@@ -245,7 +332,8 @@ async function list(req, res) {
 
       result = await pool.query(
         `SELECT o.id, o.order_no, o.schedule_id, s.schedule_date::text AS schedule_date, o.status, o.customer_name, o.customer_phone,
-                o.pickup_time, o.note, o.payment_method, o.total_amount
+                o.customer_address,
+                o.pickup_time, o.note, o.payment_method, o.bring_own_bag, o.pickup_method, o.total_amount
          FROM orders o
          JOIN schedules s ON s.id = o.schedule_id
          WHERE ${whereSql}
@@ -256,7 +344,8 @@ async function list(req, res) {
     } else {
       result = await pool.query(
         `SELECT o.id, o.order_no, o.schedule_id, s.schedule_date::text AS schedule_date, o.status, o.customer_name, o.customer_phone,
-                o.pickup_time, o.note, o.payment_method, o.total_amount
+                o.customer_address,
+                o.pickup_time, o.note, o.payment_method, o.bring_own_bag, o.pickup_method, o.total_amount
          FROM orders o
          JOIN schedules s ON s.id = o.schedule_id
          WHERE ${whereSql}
@@ -282,7 +371,8 @@ async function getById(req, res) {
   try {
     const orderResult = await pool.query(
       `SELECT o.id, o.order_no, o.user_id, o.schedule_id, s.schedule_date::text AS schedule_date, o.status, o.customer_name, o.customer_phone,
-              o.pickup_time, o.note, o.payment_method, o.total_amount
+              o.customer_address,
+              o.pickup_time, o.note, o.payment_method, o.bring_own_bag, o.pickup_method, o.total_amount
        FROM orders o
        JOIN schedules s ON s.id = o.schedule_id
        WHERE o.id = $1 AND o.user_id = $2`,
@@ -294,7 +384,7 @@ async function getById(req, res) {
     }
 
     const itemResult = await pool.query(
-      `SELECT id, schedule_item_id, product_id, product_name, unit_price, quantity, line_total
+      `SELECT id, schedule_item_id, product_id, product_name, unit_price, quantity, is_sliced, line_total
        FROM order_items
        WHERE order_id = $1
        ORDER BY id ASC`,
@@ -370,19 +460,22 @@ async function create(req, res) {
 
     const orderResult = await client.query(
       `INSERT INTO orders (
-         user_id, order_no, schedule_id, status, customer_name, customer_phone, pickup_time, note, payment_method, total_amount
-       ) VALUES ($1, $2, $3, 'PLACED', $4, $5, $6, $7, $8, 0)
+         user_id, order_no, schedule_id, status, customer_name, customer_phone, customer_address, pickup_time, note, payment_method, bring_own_bag, pickup_method, total_amount
+       ) VALUES ($1, $2, $3, 'PLACED', $4, $5, $6, $7, $8, $9, $10, $11, 0)
        RETURNING id, order_no, user_id, schedule_id, status, customer_name, customer_phone, pickup_time,
-                 note, payment_method, total_amount`,
+                 customer_address, note, payment_method, bring_own_bag, pickup_method, total_amount`,
       [
         req.user.sub,
         orderNo,
         payload.schedule_id,
         payload.customer_name,
         payload.customer_phone,
+        payload.customer_address,
         payload.pickup_time,
         payload.note,
         payload.payment_method,
+        payload.bring_own_bag,
+        payload.pickup_method,
       ],
     );
     const order = orderResult.rows[0];
@@ -426,8 +519,8 @@ async function create(req, res) {
 
       await client.query(
         `INSERT INTO order_items (
-           order_id, schedule_item_id, product_id, product_name, unit_price, quantity, line_total
-         ) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+           order_id, schedule_item_id, product_id, product_name, unit_price, quantity, is_sliced, line_total
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
         [
           order.id,
           scheduleItem.id,
@@ -435,6 +528,7 @@ async function create(req, res) {
           scheduleItem.product_name,
           scheduleItem.unit_price,
           item.quantity,
+          item.is_sliced,
           lineTotal,
         ],
       );
@@ -445,7 +539,7 @@ async function create(req, res) {
        SET total_amount = $1, updated_at = NOW()
        WHERE id = $2
        RETURNING id, order_no, user_id, schedule_id, status, customer_name, customer_phone, pickup_time,
-                 note, payment_method, total_amount`,
+                 customer_address, note, payment_method, bring_own_bag, pickup_method, total_amount`,
       [totalAmount, order.id],
     );
 
@@ -479,7 +573,7 @@ async function update(req, res) {
     await client.query("BEGIN");
 
     const orderResult = await client.query(
-      `SELECT id, user_id, schedule_id, status
+      `SELECT id, user_id, schedule_id, status, bring_own_bag, pickup_method
        FROM orders
        WHERE id = $1 AND user_id = $2
        FOR UPDATE`,
@@ -554,8 +648,8 @@ async function update(req, res) {
 
       await client.query(
         `INSERT INTO order_items (
-           order_id, schedule_item_id, product_id, product_name, unit_price, quantity, line_total
-         ) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+           order_id, schedule_item_id, product_id, product_name, unit_price, quantity, is_sliced, line_total
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
         [
           order.id,
           scheduleItem.id,
@@ -563,6 +657,7 @@ async function update(req, res) {
           scheduleItem.product_name,
           scheduleItem.unit_price,
           item.quantity,
+          item.is_sliced,
           lineTotal,
         ],
       );
@@ -572,20 +667,26 @@ async function update(req, res) {
       `UPDATE orders
        SET customer_name = $1,
            customer_phone = $2,
-           pickup_time = $3,
-           note = $4,
-           payment_method = $5,
-           total_amount = $6,
+           customer_address = $3,
+           pickup_time = $4,
+           note = $5,
+           payment_method = $6,
+           bring_own_bag = $7,
+           pickup_method = $8,
+           total_amount = $9,
            updated_at = NOW()
-       WHERE id = $7 AND user_id = $8
+       WHERE id = $10 AND user_id = $11
        RETURNING id, order_no, user_id, schedule_id, status, customer_name, customer_phone, pickup_time,
-                 note, payment_method, total_amount`,
+                 customer_address, note, payment_method, bring_own_bag, pickup_method, total_amount`,
       [
         payload.customer_name,
         payload.customer_phone,
+        payload.customer_address,
         payload.pickup_time,
         payload.note,
         payload.payment_method,
+        payload.bring_own_bag ?? order.bring_own_bag,
+        payload.pickup_method ?? order.pickup_method,
         totalAmount,
         order.id,
         req.user.sub,
@@ -622,7 +723,7 @@ async function updateStatus(req, res) {
        SET status = $1, updated_at = NOW()
        WHERE id = $2 AND user_id = $3
        RETURNING id, order_no, user_id, schedule_id, status, customer_name, customer_phone, pickup_time,
-                 note, payment_method, total_amount`,
+                 customer_address, note, payment_method, bring_own_bag, pickup_method, total_amount`,
       [status, req.params.id, req.user.sub],
     );
     if (!result.rows[0]) {

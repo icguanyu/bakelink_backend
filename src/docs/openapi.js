@@ -299,6 +299,11 @@
             description: "訂購數量",
             example: 3,
           },
+          is_sliced: {
+            type: "boolean",
+            description: "此項目是否切片",
+            example: false,
+          },
         },
       },
       CreateOrderBody: {
@@ -328,6 +333,12 @@
             description: "訂購者電話",
             example: "0912345678",
           },
+          customer_address: {
+            type: "string",
+            nullable: true,
+            description: "訂購者地址（宅配可填）",
+            example: "台北市中山區麵包路 123 號",
+          },
           pickup_time: {
             type: "string",
             description: "預計取貨時間（HH:mm）",
@@ -343,6 +354,17 @@
             type: "string",
             description: "付款方式",
             example: "cash",
+          },
+          bring_own_bag: {
+            type: "boolean",
+            description: "是否自備購物袋",
+            example: false,
+          },
+          pickup_method: {
+            type: "string",
+            enum: ["PICKUP", "DELIVERY"],
+            description: "取貨方式（PICKUP=自取, DELIVERY=宅配）",
+            example: "PICKUP",
           },
           items: {
             type: "array",
@@ -371,6 +393,12 @@
             description: "訂購者電話",
             example: "0912345678",
           },
+          customer_address: {
+            type: "string",
+            nullable: true,
+            description: "訂購者地址（宅配可填）",
+            example: "台北市中山區麵包路 123 號",
+          },
           pickup_time: {
             type: "string",
             description: "預計取貨時間（HH:mm）",
@@ -386,6 +414,17 @@
             type: "string",
             description: "付款方式",
             example: "cash",
+          },
+          bring_own_bag: {
+            type: "boolean",
+            description: "是否自備購物袋",
+            example: false,
+          },
+          pickup_method: {
+            type: "string",
+            enum: ["PICKUP", "DELIVERY"],
+            description: "取貨方式（PICKUP=自取, DELIVERY=宅配）",
+            example: "PICKUP",
           },
           items: {
             type: "array",
