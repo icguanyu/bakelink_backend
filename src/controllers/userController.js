@@ -81,6 +81,17 @@ function normalizeBusinessHours(value) {
 function normalizeUserSettingsPayload(body = {}, { partial = false } = {}) {
   const result = {};
 
+  if (!partial || body.shopSlug != null) {
+    if (body.shopSlug == null || body.shopSlug === "") {
+      result.shop_slug = null;
+    } else {
+      const slug = String(body.shopSlug).trim().toLowerCase();
+      if (!/^[a-z0-9-]{3,50}$/.test(slug)) {
+        return { error: "shopSlug must be 3-50 characters, letters/numbers/hyphens only" };
+      }
+      result.shop_slug = slug;
+    }
+  }
   if (!partial || body.avatar != null) {
     result.avatar = normalizeNullableString(body.avatar);
   }
@@ -226,6 +237,7 @@ function mapUserSettingsRow(row) {
   const toText = (value) => (value == null ? "" : String(value));
 
   return {
+    shopSlug: toText(normalized.shop_slug),
     avatar: toText(normalized.avatar),
     shopName: toText(normalized.shop_name),
     owner: toText(normalized.owner_name),
@@ -272,7 +284,7 @@ async function getMe(req, res) {
   try {
     const result = await pool.query(
       `SELECT id, name, phone, email, role,
-              avatar, shop_name, owner_name, address, intro, order_pickup_time,
+              shop_slug, avatar, shop_name, owner_name, address, intro, order_pickup_time,
               payment_methods, pickup_methods,
               shipping_free_threshold, shipping_fee, shipping_note,
               packaging_default_pack, packaging_pack_fee, packaging_eco_discount, packaging_note,
@@ -309,6 +321,9 @@ async function updateMe(req, res) {
     values.push(value);
   };
 
+  if (Object.prototype.hasOwnProperty.call(payload, "shop_slug")) {
+    assign("shop_slug", payload.shop_slug);
+  }
   if (Object.prototype.hasOwnProperty.call(payload, "avatar")) {
     assign("avatar", payload.avatar);
     assign("avatar_object_path", null);
@@ -375,7 +390,7 @@ async function updateMe(req, res) {
          SET ${fields.join(", ")}
          WHERE id = $${paramIndex}
          RETURNING id, name, phone, email, role,
-                   avatar, shop_name, owner_name, address, intro, order_pickup_time,
+                   shop_slug, avatar, shop_name, owner_name, address, intro, order_pickup_time,
                    payment_methods, pickup_methods,
                    shipping_free_threshold, shipping_fee, shipping_note,
                    packaging_default_pack, packaging_pack_fee, packaging_eco_discount, packaging_note,
@@ -385,7 +400,7 @@ async function updateMe(req, res) {
     } else {
       result = await pool.query(
         `SELECT id, name, phone, email, role,
-                avatar, shop_name, owner_name, address, intro, order_pickup_time,
+                shop_slug, avatar, shop_name, owner_name, address, intro, order_pickup_time,
                 payment_methods, pickup_methods,
                 shipping_free_threshold, shipping_fee, shipping_note,
                 packaging_default_pack, packaging_pack_fee, packaging_eco_discount, packaging_note,

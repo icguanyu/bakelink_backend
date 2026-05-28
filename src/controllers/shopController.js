@@ -1,0 +1,477 @@
+const { pool } = require("../db");
+const {
+  resolveTimeZone,
+  formatDateInTimeZone,
+  formatDatetimeInTimeZone,
+  formatTimeToHHmm,
+} = require("../utils/datetime");
+const { normalizeDecimalFields } = require("../utils/number");
+
+// ────────────────────────────────────────────────────────────
+// Helpers
+// ────────────────────────────────────────────────────────────
+
+async function resolveShopUserId(slug) {
+  const result = await pool.query(
+    `SELECT id FROM users WHERE shop_slug = $1`,
+    [slug],
+  );
+  return result.rows[0]?.id || null;
+}
+
+function formatScheduleRow(row, timeZone) {
+  return {
+    ...row,
+    schedule_date: formatDateInTimeZone(row.schedule_date, timeZone),
+    order_start_at: formatDatetimeInTimeZone(row.order_start_at, timeZone),
+    order_end_at: formatDatetimeInTimeZone(row.order_end_at, timeZone),
+  };
+}
+
+function getOrderNoPhonePart(phone) {
+  const digits = String(phone || "").replace(/\D/g, "");
+  if (digits.length === 0) return "000";
+  if (digits.startsWith("0") && digits.length >= 4) return digits.slice(1, 4);
+  if (digits.length >= 3) return digits.slice(0, 3);
+  return digits.padStart(3, "0");
+}
+
+// ────────────────────────────────────────────────────────────
+// GET /shop/:slug
+// 店家公開資訊（無需登入）
+// ────────────────────────────────────────────────────────────
+async function getShopInfo(req, res) {
+  try {
+    const slug = String(req.params.slug || "").trim().toLowerCase();
+    const result = await pool.query(
+      `SELECT id, shop_slug, shop_name, owner_name, avatar, intro,
+              payment_methods, pickup_methods, order_pickup_time,
+              business_hours
+       FROM users
+       WHERE shop_slug = $1`,
+      [slug],
+    );
+    if (!result.rows[0]) {
+      return res.status(404).json({ message: "Shop not found" });
+    }
+    const row = result.rows[0];
+    return res.json({
+      shopSlug: row.shop_slug,
+      shopName: row.shop_name || "",
+      ownerName: row.owner_name || "",
+      avatar: row.avatar || "",
+      intro: row.intro || "",
+      paymentMethods: row.payment_methods || [],
+      pickupMethods: row.pickup_methods || [],
+      orderPickupTime: formatTimeToHHmm(row.order_pickup_time) || "",
+      businessHours: row.business_hours || [],
+    });
+  } catch (error) {
+    console.error("GET /shop/:slug error:", error.message);
+    return res.status(500).json({ message: "Failed to fetch shop info" });
+  }
+}
+
+// ────────────────────────────────────────────────────────────
+// GET /shop/:slug/schedules?month=YYYY-MM
+// 開放中行程清單（ANNOUNCED / OPEN）
+// ────────────────────────────────────────────────────────────
+async function listSchedules(req, res) {
+  try {
+    const slug = String(req.params.slug || "").trim().toLowerCase();
+    const userId = await resolveShopUserId(slug);
+    if (!userId) {
+      return res.status(404).json({ message: "Shop not found" });
+    }
+
+    const month = req.query.month ? String(req.query.month).trim() : null;
+    const values = [userId];
+    let paramIndex = 2;
+    const whereClauses = [
+      "user_id = $1",
+      "status IN ('ANNOUNCED', 'OPEN')",
+    ];
+
+    if (month) {
+      if (!/^\d{4}-\d{2}$/.test(month)) {
+        return res.status(400).json({ message: "month must be YYYY-MM" });
+      }
+      const [yearText, monthText] = month.split("-");
+      const year = Number(yearText);
+      const monthNum = Number(monthText);
+      const start = new Date(Date.UTC(year, monthNum - 1, 1));
+      const end = new Date(Date.UTC(year, monthNum, 1));
+      whereClauses.push(`schedule_date >= $${paramIndex}`);
+      values.push(start.toISOString().slice(0, 10));
+      paramIndex += 1;
+      whereClauses.push(`schedule_date < $${paramIndex}`);
+      values.push(end.toISOString().slice(0, 10));
+      paramIndex += 1;
+    }
+
+    const result = await pool.query(
+      `SELECT id, schedule_date::text AS schedule_date, status, note,
+              order_start_at, order_end_at
+       FROM schedules
+       WHERE ${whereClauses.join(" AND ")}
+       ORDER BY schedule_date ASC`,
+      values,
+    );
+
+    const timeZone = resolveTimeZone(req);
+    return res.json({
+      data: result.rows.map((row) => formatScheduleRow(row, timeZone)),
+    });
+  } catch (error) {
+    console.error("GET /shop/:slug/schedules error:", error.message);
+    return res.status(500).json({ message: "Failed to fetch schedules" });
+  }
+}
+
+// ────────────────────────────────────────────────────────────
+// GET /shop/:slug/schedules/:date
+// 特定日期行程詳細 + 各品項剩餘數量
+// ────────────────────────────────────────────────────────────
+async function getScheduleByDate(req, res) {
+  try {
+    const slug = String(req.params.slug || "").trim().toLowerCase();
+    const date = String(req.params.date || "").trim();
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return res.status(400).json({ message: "date must be YYYY-MM-DD" });
+    }
+
+    const userId = await resolveShopUserId(slug);
+    if (!userId) {
+      return res.status(404).json({ message: "Shop not found" });
+    }
+
+    const scheduleResult = await pool.query(
+      `SELECT id, schedule_date::text AS schedule_date, status, note,
+              order_start_at, order_end_at
+       FROM schedules
+       WHERE user_id = $1
+         AND schedule_date = $2::date
+         AND status IN ('ANNOUNCED', 'OPEN')`,
+      [userId, date],
+    );
+    const schedule = scheduleResult.rows[0];
+    if (!schedule) {
+      return res.status(404).json({ message: "Schedule not found" });
+    }
+
+    const itemsResult = await pool.query(
+      `SELECT si.id, si.product_id, si.product_name, si.unit_price, si.sales_limit,
+              CASE
+                WHEN si.sales_limit IS NULL THEN NULL
+                ELSE GREATEST(0, si.sales_limit - COALESCE(sold.sold_qty, 0))
+              END AS remaining
+       FROM schedule_items si
+       LEFT JOIN (
+         SELECT oi.schedule_item_id, SUM(oi.quantity)::int AS sold_qty
+         FROM order_items oi
+         JOIN orders o ON o.id = oi.order_id
+         WHERE o.status IN ('PLACED', 'COMPLETED')
+         GROUP BY oi.schedule_item_id
+       ) sold ON sold.schedule_item_id = si.id
+       WHERE si.schedule_id = $1
+       ORDER BY si.id ASC`,
+      [schedule.id],
+    );
+
+    const timeZone = resolveTimeZone(req);
+    return res.json({
+      ...formatScheduleRow(schedule, timeZone),
+      items: itemsResult.rows.map((item) =>
+        normalizeDecimalFields(item, ["unit_price"]),
+      ),
+    });
+  } catch (error) {
+    console.error("GET /shop/:slug/schedules/:date error:", error.message);
+    return res.status(500).json({ message: "Failed to fetch schedule" });
+  }
+}
+
+// ────────────────────────────────────────────────────────────
+// POST /shop/:slug/orders
+// 客人下單（無需登入）
+// ────────────────────────────────────────────────────────────
+function normalizeCustomerOrderPayload(body = {}) {
+  const scheduleId = String(body.schedule_id || "").trim();
+  const customerName = String(body.customer_name || "").trim();
+  const customerPhone = String(body.customer_phone || "").trim();
+  const customerAddress = body.customer_address == null
+    ? null
+    : String(body.customer_address).trim() || null;
+  const paymentMethod = String(body.payment_method || "").trim();
+  const note = body.note == null ? null : String(body.note).trim() || null;
+
+  const bringOwnBag = typeof body.bring_own_bag === "boolean"
+    ? body.bring_own_bag
+    : false;
+
+  const rawPickup = String(body.pickup_method || "PICKUP").trim().toUpperCase();
+  const pickupAliasMap = { PICKUP: "PICKUP", SELF_PICKUP: "PICKUP", DELIVERY: "DELIVERY", 自取: "PICKUP", 宅配: "DELIVERY" };
+  const pickupMethod = pickupAliasMap[rawPickup] || "PICKUP";
+
+  if (!scheduleId) return { error: "schedule_id is required" };
+  if (!customerName) return { error: "customer_name is required" };
+  if (!customerPhone) return { error: "customer_phone is required" };
+  if (!paymentMethod) return { error: "payment_method is required" };
+
+  const pickupTime = String(body.pickup_time || "").trim();
+  if (!pickupTime) return { error: "pickup_time is required" };
+  if (!/^([0-1]?\d|2[0-3]):[0-5]\d$/.test(pickupTime)) {
+    return { error: "pickup_time must be HH:mm" };
+  }
+
+  if (!Array.isArray(body.items) || body.items.length === 0) {
+    return { error: "items is required and must not be empty" };
+  }
+
+  const items = [];
+  for (const item of body.items) {
+    if (!item || typeof item !== "object") return { error: "each item must be an object" };
+    const quantity = Number(item.quantity);
+    if (!Number.isInteger(quantity) || quantity <= 0) {
+      return { error: "item.quantity must be a positive integer" };
+    }
+    const scheduleItemId = String(item.schedule_item_id || "").trim();
+    if (!scheduleItemId) return { error: "item.schedule_item_id is required" };
+    const isSliced = typeof item.is_sliced === "boolean" ? item.is_sliced : false;
+    items.push({ schedule_item_id: scheduleItemId, quantity, is_sliced: isSliced });
+  }
+
+  return {
+    value: {
+      schedule_id: scheduleId,
+      customer_name: customerName,
+      customer_phone: customerPhone,
+      customer_address: customerAddress,
+      pickup_time: pickupTime,
+      note,
+      payment_method: paymentMethod,
+      bring_own_bag: bringOwnBag,
+      pickup_method: pickupMethod,
+      items,
+    },
+  };
+}
+
+async function createOrder(req, res) {
+  const normalized = normalizeCustomerOrderPayload(req.body || {});
+  if (normalized.error) {
+    return res.status(400).json({ message: normalized.error });
+  }
+  const payload = normalized.value;
+
+  const slug = String(req.params.slug || "").trim().toLowerCase();
+  const userId = await resolveShopUserId(slug);
+  if (!userId) {
+    return res.status(404).json({ message: "Shop not found" });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    const scheduleResult = await client.query(
+      `SELECT id, status, schedule_date::text AS schedule_date
+       FROM schedules
+       WHERE id = $1 AND user_id = $2
+       FOR UPDATE`,
+      [payload.schedule_id, userId],
+    );
+    const schedule = scheduleResult.rows[0];
+    if (!schedule) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ message: "Schedule not found" });
+    }
+    if (schedule.status !== "OPEN") {
+      await client.query("ROLLBACK");
+      return res.status(409).json({ message: "This schedule is not accepting orders" });
+    }
+
+    const orderDate = String(schedule.schedule_date || "").replace(/-/g, "");
+    const orderNoPhonePart = getOrderNoPhonePart(payload.customer_phone);
+
+    await client.query(
+      `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`,
+      [`${userId}:${orderDate}`],
+    );
+    const sequenceResult = await client.query(
+      `SELECT (COUNT(*) + 1)::int AS next_sequence
+       FROM orders
+       WHERE user_id = $1
+         AND schedule_id IN (
+           SELECT id FROM schedules
+           WHERE user_id = $1 AND schedule_date = $2::date
+         )`,
+      [userId, schedule.schedule_date],
+    );
+    const nextSequence = sequenceResult.rows[0]?.next_sequence || 1;
+    const orderNo = `${orderNoPhonePart}-${orderDate}-${String(nextSequence).padStart(3, "0")}`;
+
+    const orderResult = await client.query(
+      `INSERT INTO orders (
+         user_id, order_no, schedule_id, status,
+         customer_name, customer_phone, customer_address,
+         pickup_time, note, payment_method, bring_own_bag, pickup_method, total_amount
+       ) VALUES ($1, $2, $3, 'PLACED', $4, $5, $6, $7, $8, $9, $10, $11, 0)
+       RETURNING id, order_no, status, customer_name, customer_phone,
+                 pickup_time, pickup_method, bring_own_bag, total_amount`,
+      [
+        userId,
+        orderNo,
+        payload.schedule_id,
+        payload.customer_name,
+        payload.customer_phone,
+        payload.customer_address,
+        payload.pickup_time,
+        payload.note,
+        payload.payment_method,
+        payload.bring_own_bag,
+        payload.pickup_method,
+      ],
+    );
+    const order = orderResult.rows[0];
+
+    let totalAmount = 0;
+    for (const item of payload.items) {
+      const scheduleItemResult = await client.query(
+        `SELECT id, product_id, product_name, unit_price, sales_limit
+         FROM schedule_items
+         WHERE id = $1 AND schedule_id = $2
+         FOR UPDATE`,
+        [item.schedule_item_id, payload.schedule_id],
+      );
+      const si = scheduleItemResult.rows[0];
+      if (!si) throw new Error("SCHEDULE_ITEM_NOT_FOUND");
+
+      if (si.sales_limit !== null) {
+        const soldResult = await client.query(
+          `SELECT COALESCE(SUM(oi.quantity), 0)::int AS sold_qty
+           FROM order_items oi
+           JOIN orders o ON o.id = oi.order_id
+           WHERE oi.schedule_item_id = $1
+             AND o.status IN ('PLACED', 'COMPLETED')`,
+          [si.id],
+        );
+        const soldQty = soldResult.rows[0]?.sold_qty || 0;
+        if (soldQty + item.quantity > si.sales_limit) {
+          throw new Error("SALES_LIMIT_EXCEEDED");
+        }
+      }
+
+      const lineTotal = Number(si.unit_price) * item.quantity;
+      totalAmount += lineTotal;
+
+      await client.query(
+        `INSERT INTO order_items (
+           order_id, schedule_item_id, product_id, product_name,
+           unit_price, quantity, is_sliced, line_total
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        [order.id, si.id, si.product_id, si.product_name, si.unit_price, item.quantity, item.is_sliced, lineTotal],
+      );
+    }
+
+    const finalOrder = await client.query(
+      `UPDATE orders SET total_amount = $1, updated_at = NOW()
+       WHERE id = $2
+       RETURNING id, order_no, status, customer_name, customer_phone,
+                 pickup_time, pickup_method, bring_own_bag, note, total_amount`,
+      [totalAmount, order.id],
+    );
+
+    await client.query("COMMIT");
+
+    const row = finalOrder.rows[0];
+    return res.status(201).json({
+      ...normalizeDecimalFields(row, ["total_amount"]),
+      pickup_time: formatTimeToHHmm(row.pickup_time),
+      pickup_method: String(row.pickup_method || "").toLowerCase(),
+      schedule_date: schedule.schedule_date,
+    });
+  } catch (error) {
+    await client.query("ROLLBACK");
+    if (error.message === "SCHEDULE_ITEM_NOT_FOUND") {
+      return res.status(400).json({ message: "Some items are not in this schedule" });
+    }
+    if (error.message === "SALES_LIMIT_EXCEEDED") {
+      return res.status(409).json({ message: "Sales limit exceeded for one or more items" });
+    }
+    console.error("POST /shop/:slug/orders error:", error.message);
+    return res.status(500).json({ message: "Failed to create order" });
+  } finally {
+    client.release();
+  }
+}
+
+// ────────────────────────────────────────────────────────────
+// GET /shop/:slug/orders/:orderNo?phone=xxx
+// 客人查詢訂單（用電話驗證）
+// ────────────────────────────────────────────────────────────
+async function getOrderByNo(req, res) {
+  try {
+    const slug = String(req.params.slug || "").trim().toLowerCase();
+    const orderNo = String(req.params.orderNo || "").trim();
+    const phone = String(req.query.phone || "").trim();
+
+    if (!phone) {
+      return res.status(400).json({ message: "phone query parameter is required" });
+    }
+
+    const userId = await resolveShopUserId(slug);
+    if (!userId) {
+      return res.status(404).json({ message: "Shop not found" });
+    }
+
+    const orderResult = await pool.query(
+      `SELECT o.id, o.order_no, o.status, o.customer_name, o.customer_phone,
+              o.customer_address, o.pickup_time, o.pickup_method, o.bring_own_bag,
+              o.note, o.payment_method, o.total_amount,
+              s.schedule_date::text AS schedule_date
+       FROM orders o
+       JOIN schedules s ON s.id = o.schedule_id
+       WHERE o.user_id = $1
+         AND o.order_no = $2
+         AND o.customer_phone = $3`,
+      [userId, orderNo, phone],
+    );
+
+    const order = orderResult.rows[0];
+    if (!order) {
+      return res.status(404).json({ message: "Order not found" });
+    }
+
+    const itemsResult = await pool.query(
+      `SELECT product_name, unit_price, quantity, is_sliced, line_total
+       FROM order_items
+       WHERE order_id = $1
+       ORDER BY id ASC`,
+      [order.id],
+    );
+
+    const timeZone = resolveTimeZone(req);
+    return res.json({
+      ...normalizeDecimalFields(order, ["total_amount"]),
+      schedule_date: formatDateInTimeZone(order.schedule_date, timeZone),
+      pickup_time: formatTimeToHHmm(order.pickup_time),
+      pickup_method: String(order.pickup_method || "").toLowerCase(),
+      items: itemsResult.rows.map((item) =>
+        normalizeDecimalFields(item, ["unit_price", "line_total"]),
+      ),
+    });
+  } catch (error) {
+    console.error("GET /shop/:slug/orders/:orderNo error:", error.message);
+    return res.status(500).json({ message: "Failed to fetch order" });
+  }
+}
+
+module.exports = {
+  getShopInfo,
+  listSchedules,
+  getScheduleByDate,
+  createOrder,
+  getOrderByNo,
+};

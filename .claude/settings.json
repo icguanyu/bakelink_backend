@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(Get-ChildItem -Path \"c:\\\\Users\\\\user\\\\Desktop\\\\bakelink_backend\" -Recurse -Force | ForEach-Object { $_.FullName } | Sort-Object)"
+    ]
+  }
+}
