@@ -45,6 +45,7 @@ async function getShopInfo(req, res) {
     const slug = String(req.params.slug || "").trim().toLowerCase();
     const result = await pool.query(
       `SELECT id, shop_slug, shop_name, owner_name, avatar, intro,
+              phone, address,
               payment_methods, pickup_methods, order_pickup_time,
               business_hours
        FROM users
@@ -59,6 +60,8 @@ async function getShopInfo(req, res) {
       shopSlug: row.shop_slug,
       shopName: row.shop_name || "",
       ownerName: row.owner_name || "",
+      phone: row.phone || "",
+      address: row.address || "",
       avatar: row.avatar || "",
       intro: row.intro || "",
       paymentMethods: row.payment_methods || [],
