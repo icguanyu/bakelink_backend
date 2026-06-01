@@ -121,9 +121,44 @@ async function listSchedules(req, res) {
       values,
     );
 
+    const schedules = result.rows;
     const timeZone = resolveTimeZone(req);
+
+    if (schedules.length === 0) {
+      return res.json({ data: [] });
+    }
+
+    const scheduleIds = schedules.map((r) => r.id);
+    const itemsResult = await pool.query(
+      `SELECT si.id, si.schedule_id, si.product_id, si.product_name, si.unit_price, si.sales_limit,
+              CASE
+                WHEN si.sales_limit IS NULL THEN NULL
+                ELSE GREATEST(0, si.sales_limit - COALESCE(sold.sold_qty, 0))
+              END AS remaining
+       FROM schedule_items si
+       LEFT JOIN (
+         SELECT oi.schedule_item_id, SUM(oi.quantity)::int AS sold_qty
+         FROM order_items oi
+         JOIN orders o ON o.id = oi.order_id
+         WHERE o.status IN ('PLACED', 'COMPLETED')
+         GROUP BY oi.schedule_item_id
+       ) sold ON sold.schedule_item_id = si.id
+       WHERE si.schedule_id = ANY($1)
+       ORDER BY si.schedule_id, si.id ASC`,
+      [scheduleIds],
+    );
+
+    const itemsBySchedule = {};
+    for (const item of itemsResult.rows) {
+      if (!itemsBySchedule[item.schedule_id]) itemsBySchedule[item.schedule_id] = [];
+      itemsBySchedule[item.schedule_id].push(normalizeDecimalFields(item, ["unit_price"]));
+    }
+
     return res.json({
-      data: result.rows.map((row) => formatScheduleRow(row, timeZone)),
+      data: schedules.map((row) => ({
+        ...formatScheduleRow(row, timeZone),
+        items: itemsBySchedule[row.id] || [],
+      })),
     });
   } catch (error) {
     console.error("GET /shop/:slug/schedules error:", error.message);
