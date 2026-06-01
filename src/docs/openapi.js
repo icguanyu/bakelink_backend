@@ -15,6 +15,7 @@
     { name: "Schedules", description: "接單排程 CRUD 與查詢" },
     { name: "Orders", description: "商家端訂單 CRUD 與狀態管理" },
     { name: "Upload", description: "圖片上傳" },
+    { name: "Shop (Public)", description: "前台公開 API，無需登入。供消費者瀏覽店家、行程與下單使用。" },
   ],
   servers: [{ url: "http://localhost:3000" }],
   components: {
@@ -75,6 +76,11 @@
       UserSettingsBody: {
         type: "object",
         properties: {
+          shopSlug: {
+            type: "string",
+            description: "店家專屬網址代碼（3-50 字，小寫英數字與連字號）",
+            example: "nice-bread",
+          },
           avatar: { type: "string", description: "商家頭像 URL", example: "" },
           shopName: { type: "string", description: "店名", example: "山丘烘焙坊" },
           owner: { type: "string", description: "負責人名稱", example: "王麵麥" },
@@ -450,6 +456,35 @@
         properties: {
           url: { type: "string", example: "https://xxx.supabase.co/storage/v1/object/public/uploads/..." },
         },
+      },
+      CustomerOrderBody: {
+        type: "object",
+        required: ["schedule_id", "customer_name", "customer_phone", "pickup_time", "payment_method", "items"],
+        properties: {
+          schedule_id: { type: "string", format: "uuid", description: "行程 ID", example: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb" },
+          customer_name: { type: "string", description: "訂購者姓名", example: "王小明" },
+          customer_phone: { type: "string", description: "訂購者電話", example: "0912345678" },
+          customer_address: { type: "string", nullable: true, description: "地址（宅配填寫）", example: "台北市中山區麵包路 123 號" },
+          pickup_time: { type: "string", description: "取貨時間（HH:mm）", example: "14:00" },
+          payment_method: { type: "string", description: "付款方式", example: "cash" },
+          note: { type: "string", nullable: true, description: "備註", example: "請幫我分裝" },
+          bring_own_bag: { type: "boolean", description: "是否自備袋子", example: false },
+          pickup_method: { type: "string", enum: ["PICKUP", "DELIVERY"], description: "取貨方式", example: "PICKUP" },
+          items: {
+            type: "array",
+            minItems: 1,
+            items: {
+              type: "object",
+              required: ["schedule_item_id", "quantity"],
+              properties: {
+                schedule_item_id: { type: "string", format: "uuid", description: "行程品項 ID" },
+                quantity: { type: "integer", minimum: 1, example: 2 },
+                is_sliced: { type: "boolean", description: "是否切片", example: false },
+              },
+            },
+          },
+        },
+        description: "消費者下單資料",
       },
       Pagination: {
         type: "object",
@@ -1040,6 +1075,91 @@
           },
         },
         responses: { 200: { description: "更新成功" }, 404: { description: "找不到訂單" } },
+      },
+    },
+    "/shop/{slug}": {
+      get: {
+        tags: ["Shop (Public)"],
+        summary: "取得店家公開資訊",
+        description: "無需登入。回傳店名、頭像、簡介、付款方式、取貨方式、營業時間等。",
+        parameters: [
+          { name: "slug", in: "path", required: true, schema: { type: "string", example: "nice-bread" }, description: "店家 slug" },
+        ],
+        responses: {
+          200: { description: "成功" },
+          404: { description: "找不到店家" },
+        },
+      },
+    },
+    "/shop/{slug}/schedules": {
+      get: {
+        tags: ["Shop (Public)"],
+        summary: "取得店家開放中的行程列表",
+        description: "無需登入。只回傳 ANNOUNCED 與 OPEN 狀態的行程。可用 month 參數篩選。",
+        parameters: [
+          { name: "slug", in: "path", required: true, schema: { type: "string", example: "nice-bread" }, description: "店家 slug" },
+          { name: "month", in: "query", required: false, schema: { type: "string", example: "2026-05" }, description: "月份（YYYY-MM），不帶則回傳全部開放行程" },
+        ],
+        responses: {
+          200: { description: "成功" },
+          400: { description: "month 格式錯誤" },
+          404: { description: "找不到店家" },
+        },
+      },
+    },
+    "/shop/{slug}/schedules/{date}": {
+      get: {
+        tags: ["Shop (Public)"],
+        summary: "取得特定日期行程詳細與品項剩餘數量",
+        description: "無需登入。回傳行程資訊與各品項（含 remaining 剩餘數量，null 代表不限量）。",
+        parameters: [
+          { name: "slug", in: "path", required: true, schema: { type: "string", example: "nice-bread" }, description: "店家 slug" },
+          { name: "date", in: "path", required: true, schema: { type: "string", format: "date", example: "2026-05-28" }, description: "行程日期（YYYY-MM-DD）" },
+        ],
+        responses: {
+          200: { description: "成功" },
+          400: { description: "日期格式錯誤" },
+          404: { description: "找不到店家或行程" },
+        },
+      },
+    },
+    "/shop/{slug}/orders": {
+      post: {
+        tags: ["Shop (Public)"],
+        summary: "消費者下單",
+        description: "無需登入。行程狀態必須為 OPEN，含防超賣機制。",
+        parameters: [
+          { name: "slug", in: "path", required: true, schema: { type: "string", example: "nice-bread" }, description: "店家 slug" },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": { schema: { $ref: "#/components/schemas/CustomerOrderBody" } },
+          },
+        },
+        responses: {
+          201: { description: "下單成功" },
+          400: { description: "請求資料不正確或品項不存在" },
+          404: { description: "找不到店家或行程" },
+          409: { description: "行程未開放接單或品項數量不足" },
+        },
+      },
+    },
+    "/shop/{slug}/orders/{orderNo}": {
+      get: {
+        tags: ["Shop (Public)"],
+        summary: "消費者查詢訂單",
+        description: "無需登入。需帶 phone query 參數驗證身份。",
+        parameters: [
+          { name: "slug", in: "path", required: true, schema: { type: "string", example: "nice-bread" }, description: "店家 slug" },
+          { name: "orderNo", in: "path", required: true, schema: { type: "string", example: "912-20260528-001" }, description: "訂單編號" },
+          { name: "phone", in: "query", required: true, schema: { type: "string", example: "0912345678" }, description: "訂購時填寫的電話（用於驗證）" },
+        ],
+        responses: {
+          200: { description: "成功" },
+          400: { description: "缺少 phone 參數" },
+          404: { description: "找不到訂單" },
+        },
       },
     },
     "/UploadFile": {
