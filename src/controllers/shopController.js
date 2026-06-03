@@ -88,22 +88,13 @@ async function listSchedules(req, res) {
     }
 
     const month = req.query.month ? String(req.query.month).trim() : null;
-    const status = req.query.status ? String(req.query.status).trim().toUpperCase() : null;
-
-    const validStatuses = ["DRAFT", "ANNOUNCED", "OPEN", "CLOSED", "FULFILLED"];
-    if (status && !validStatuses.includes(status)) {
-      return res.status(400).json({ message: "invalid status value" });
-    }
 
     const values = [userId];
     let paramIndex = 2;
-    const whereClauses = ["user_id = $1"];
-
-    if (status) {
-      whereClauses.push(`status = $${paramIndex}`);
-      values.push(status);
-      paramIndex += 1;
-    }
+    const whereClauses = [
+      "user_id = $1",
+      "status = ANY('{ANNOUNCED,OPEN,CLOSED}')",
+    ];
 
     if (month) {
       if (!/^\d{4}-\d{2}$/.test(month)) {
@@ -199,7 +190,8 @@ async function getScheduleByDate(req, res) {
               order_start_at, order_end_at
        FROM schedules
        WHERE user_id = $1
-         AND schedule_date = $2::date`,
+         AND schedule_date = $2::date
+         AND status = ANY('{ANNOUNCED,OPEN,CLOSED}')`,
       [userId, date],
     );
     const schedule = scheduleResult.rows[0];
