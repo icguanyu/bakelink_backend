@@ -514,6 +514,74 @@ async function createOrder(req, res) {
 }
 
 // ────────────────────────────────────────────────────────────
+// GET /shop/:slug/orders?phone=xxx
+// 客人用電話查詢所有訂單（最新在前）
+// ────────────────────────────────────────────────────────────
+async function listOrdersByPhone(req, res) {
+  try {
+    const slug = String(req.params.slug || "").trim().toLowerCase();
+    const phone = String(req.query.phone || "").trim();
+
+    if (!phone) {
+      return res.status(400).json({ message: "phone query parameter is required" });
+    }
+
+    const userId = await resolveShopUserId(slug);
+    if (!userId) {
+      return res.status(404).json({ message: "Shop not found" });
+    }
+
+    const ordersResult = await pool.query(
+      `SELECT o.id, o.order_no, o.status, o.customer_name, o.customer_phone,
+              o.customer_address, o.pickup_time, o.pickup_method, o.bring_own_bag,
+              o.note, o.payment_method, o.total_amount,
+              s.schedule_date::text AS schedule_date
+       FROM orders o
+       JOIN schedules s ON s.id = o.schedule_id
+       WHERE o.user_id = $1
+         AND o.customer_phone = $2
+       ORDER BY o.created_at DESC`,
+      [userId, phone],
+    );
+
+    if (ordersResult.rows.length === 0) {
+      return res.json({ data: [] });
+    }
+
+    const orderIds = ordersResult.rows.map((r) => r.id);
+    const itemsResult = await pool.query(
+      `SELECT order_id, product_name, unit_price, quantity, is_sliced, line_total
+       FROM order_items
+       WHERE order_id = ANY($1::uuid[])
+       ORDER BY id ASC`,
+      [orderIds],
+    );
+
+    const itemsByOrderId = {};
+    for (const item of itemsResult.rows) {
+      if (!itemsByOrderId[item.order_id]) itemsByOrderId[item.order_id] = [];
+      itemsByOrderId[item.order_id].push(
+        normalizeDecimalFields(item, ["unit_price", "line_total"]),
+      );
+    }
+
+    const timeZone = resolveTimeZone(req);
+    return res.json({
+      data: ordersResult.rows.map((order) => ({
+        ...normalizeDecimalFields(order, ["total_amount"]),
+        schedule_date: formatDateInTimeZone(order.schedule_date, timeZone),
+        pickup_time: formatTimeToHHmm(order.pickup_time),
+        pickup_method: String(order.pickup_method || "").toLowerCase(),
+        items: itemsByOrderId[order.id] || [],
+      })),
+    });
+  } catch (error) {
+    console.error("GET /shop/:slug/orders error:", error.message);
+    return res.status(500).json({ message: "Failed to fetch orders" });
+  }
+}
+
+// ────────────────────────────────────────────────────────────
 // GET /shop/:slug/orders/:orderNo?phone=xxx
 // 客人查詢訂單（用電話驗證）
 // ────────────────────────────────────────────────────────────
@@ -580,6 +648,7 @@ module.exports = {
   getScheduleByDate,
   listCategories,
   listProducts,
+  listOrdersByPhone,
   createOrder,
   getOrderByNo,
 };

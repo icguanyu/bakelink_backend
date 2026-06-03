@@ -1201,6 +1201,20 @@
       },
     },
     "/shop/{slug}/orders": {
+      get: {
+        tags: ["Shop (Public)"],
+        summary: "消費者用電話查詢所有訂單",
+        description: "無需登入。帶 phone 查詢參數，回傳該電話的所有訂單（含已完成），最新在前。",
+        parameters: [
+          { name: "slug", in: "path", required: true, schema: { type: "string", example: "nice-bread" }, description: "店家 slug" },
+          { name: "phone", in: "query", required: true, schema: { type: "string", example: "0912345678" }, description: "訂購時填寫的電話" },
+        ],
+        responses: {
+          200: { description: "成功，data 陣列（無訂單時回傳空陣列）" },
+          400: { description: "缺少 phone 參數" },
+          404: { description: "找不到店家" },
+        },
+      },
       post: {
         tags: ["Shop (Public)"],
         summary: "消費者下單",

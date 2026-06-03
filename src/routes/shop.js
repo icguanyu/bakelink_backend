@@ -6,6 +6,7 @@ const {
   getScheduleByDate,
   listCategories,
   listProducts,
+  listOrdersByPhone,
   createOrder,
   getOrderByNo,
 } = require("../controllers/shopController");
@@ -15,6 +16,7 @@ router.get("/:slug/schedules", listSchedules);
 router.get("/:slug/schedules/:date", getScheduleByDate);
 router.get("/:slug/categories", listCategories);
 router.get("/:slug/products", listProducts);
+router.get("/:slug/orders", listOrdersByPhone);
 router.post("/:slug/orders", createOrder);
 router.get("/:slug/orders/:orderNo", getOrderByNo);
 
