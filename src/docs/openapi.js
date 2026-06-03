@@ -1123,6 +1123,47 @@
         },
       },
     },
+    "/shop/{slug}/products": {
+      get: {
+        tags: ["Shop (Public)"],
+        summary: "取得店家上架商品清單",
+        description: "無需登入。只回傳 is_active = true 的商品，依名稱排序。",
+        parameters: [
+          { name: "slug", in: "path", required: true, schema: { type: "string", example: "nice-bread" }, description: "店家 slug" },
+        ],
+        responses: {
+          200: {
+            description: "成功",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    data: {
+                      type: "array",
+                      items: {
+                        type: "object",
+                        properties: {
+                          id: { type: "string", format: "uuid" },
+                          category_id: { type: "string", format: "uuid" },
+                          name: { type: "string", example: "巧克力貝果" },
+                          price: { type: "number", example: 99 },
+                          description: { type: "string", nullable: true },
+                          ingredients: { type: "string", nullable: true },
+                          image_urls: { type: "array", items: { type: "string" } },
+                          ingredient_details: { type: "array", items: { type: "object" } },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          404: { description: "找不到店家" },
+        },
+      },
+    },
     "/shop/{slug}/orders": {
       post: {
         tags: ["Shop (Public)"],

@@ -231,6 +231,35 @@ async function getScheduleByDate(req, res) {
 }
 
 // ────────────────────────────────────────────────────────────
+// GET /shop/:slug/products
+// 店家上架商品清單（無需登入）
+// ────────────────────────────────────────────────────────────
+async function listProducts(req, res) {
+  try {
+    const slug = String(req.params.slug || "").trim().toLowerCase();
+    const userId = await resolveShopUserId(slug);
+    if (!userId) {
+      return res.status(404).json({ message: "Shop not found" });
+    }
+
+    const result = await pool.query(
+      `SELECT id, category_id, name, price, description, ingredients, image_urls, ingredient_details
+       FROM products
+       WHERE user_id = $1 AND is_active = true
+       ORDER BY name ASC`,
+      [userId],
+    );
+
+    return res.json({
+      data: result.rows.map((row) => normalizeDecimalFields(row, ["price"])),
+    });
+  } catch (error) {
+    console.error("GET /shop/:slug/products error:", error.message);
+    return res.status(500).json({ message: "Failed to fetch products" });
+  }
+}
+
+// ────────────────────────────────────────────────────────────
 // POST /shop/:slug/orders
 // 客人下單（無需登入）
 // ────────────────────────────────────────────────────────────
@@ -510,6 +539,7 @@ module.exports = {
   getShopInfo,
   listSchedules,
   getScheduleByDate,
+  listProducts,
   createOrder,
   getOrderByNo,
 };
