@@ -443,6 +443,7 @@ async function createOrder(req, res) {
     const order = orderResult.rows[0];
 
     let totalAmount = 0;
+    const orderItems = [];
     for (const item of payload.items) {
       const scheduleItemResult = await client.query(
         `SELECT id, product_id, product_name, unit_price, sales_limit
@@ -479,6 +480,13 @@ async function createOrder(req, res) {
          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
         [order.id, si.id, si.product_id, si.product_name, si.unit_price, item.quantity, item.is_sliced, lineTotal],
       );
+
+      orderItems.push(
+        normalizeDecimalFields(
+          { product_name: si.product_name, unit_price: si.unit_price, quantity: item.quantity, is_sliced: item.is_sliced, line_total: lineTotal },
+          ["unit_price", "line_total"],
+        ),
+      );
     }
 
     const finalOrder = await client.query(
@@ -497,6 +505,7 @@ async function createOrder(req, res) {
       pickup_time: formatTimeToHHmm(row.pickup_time),
       pickup_method: String(row.pickup_method || "").toLowerCase(),
       schedule_date: schedule.schedule_date,
+      items: orderItems,
     });
   } catch (error) {
     await client.query("ROLLBACK");
