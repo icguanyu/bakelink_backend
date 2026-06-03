@@ -231,7 +231,35 @@ async function getScheduleByDate(req, res) {
 }
 
 // ────────────────────────────────────────────────────────────
-// GET /shop/:slug/products
+// GET /shop/:slug/categories
+// 有上架商品的種類清單（無需登入）
+// ────────────────────────────────────────────────────────────
+async function listCategories(req, res) {
+  try {
+    const slug = String(req.params.slug || "").trim().toLowerCase();
+    const userId = await resolveShopUserId(slug);
+    if (!userId) {
+      return res.status(404).json({ message: "Shop not found" });
+    }
+
+    const result = await pool.query(
+      `SELECT DISTINCT pc.id, pc.name
+       FROM product_categories pc
+       JOIN products p ON p.category_id = pc.id
+       WHERE p.user_id = $1 AND p.is_active = true
+       ORDER BY pc.name ASC`,
+      [userId],
+    );
+
+    return res.json({ data: result.rows });
+  } catch (error) {
+    console.error("GET /shop/:slug/categories error:", error.message);
+    return res.status(500).json({ message: "Failed to fetch categories" });
+  }
+}
+
+// ────────────────────────────────────────────────────────────
+// GET /shop/:slug/products[?category_id=xxx]
 // 店家上架商品清單（無需登入）
 // ────────────────────────────────────────────────────────────
 async function listProducts(req, res) {
@@ -242,12 +270,22 @@ async function listProducts(req, res) {
       return res.status(404).json({ message: "Shop not found" });
     }
 
+    const categoryId = req.query.category_id ? String(req.query.category_id).trim() : null;
+
+    const values = [userId];
+    const whereClauses = ["user_id = $1", "is_active = true"];
+
+    if (categoryId) {
+      values.push(categoryId);
+      whereClauses.push(`category_id = $${values.length}`);
+    }
+
     const result = await pool.query(
       `SELECT id, category_id, name, price, description, ingredients, image_urls, ingredient_details
        FROM products
-       WHERE user_id = $1 AND is_active = true
+       WHERE ${whereClauses.join(" AND ")}
        ORDER BY name ASC`,
-      [userId],
+      values,
     );
 
     return res.json({
@@ -539,6 +577,7 @@ module.exports = {
   getShopInfo,
   listSchedules,
   getScheduleByDate,
+  listCategories,
   listProducts,
   createOrder,
   getOrderByNo,

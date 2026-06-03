@@ -1123,13 +1123,49 @@
         },
       },
     },
+    "/shop/{slug}/categories": {
+      get: {
+        tags: ["Shop (Public)"],
+        summary: "取得店家有上架商品的種類清單",
+        description: "無需登入。只回傳至少有一個上架商品（is_active = true）的種類，依名稱排序。",
+        parameters: [
+          { name: "slug", in: "path", required: true, schema: { type: "string", example: "nice-bread" }, description: "店家 slug" },
+        ],
+        responses: {
+          200: {
+            description: "成功",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    data: {
+                      type: "array",
+                      items: {
+                        type: "object",
+                        properties: {
+                          id: { type: "string", format: "uuid" },
+                          name: { type: "string", example: "貝果" },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          404: { description: "找不到店家" },
+        },
+      },
+    },
     "/shop/{slug}/products": {
       get: {
         tags: ["Shop (Public)"],
         summary: "取得店家上架商品清單",
-        description: "無需登入。只回傳 is_active = true 的商品，依名稱排序。",
+        description: "無需登入。只回傳 is_active = true 的商品，依名稱排序。可用 category_id 篩選種類。",
         parameters: [
           { name: "slug", in: "path", required: true, schema: { type: "string", example: "nice-bread" }, description: "店家 slug" },
+          { name: "category_id", in: "query", required: false, schema: { type: "string", format: "uuid" }, description: "種類 ID（選填，不帶則回傳全部）" },
         ],
         responses: {
           200: {
