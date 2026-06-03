@@ -143,8 +143,8 @@ function mapScheduleDate(row, timeZone) {
   return {
     ...row,
     schedule_date: formatDateInTimeZone(row.schedule_date, timeZone),
-    order_start_at: formatDatetimeInTimeZone(row.order_start_at, timeZone),
-    order_end_at: formatDatetimeInTimeZone(row.order_end_at, timeZone),
+    order_start_at: row.order_start_at ? formatDatetimeInTimeZone(row.order_start_at, timeZone) : null,
+    order_end_at: row.order_end_at ? formatDatetimeInTimeZone(row.order_end_at, timeZone) : null,
   };
 }
 
