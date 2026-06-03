@@ -1094,15 +1094,16 @@
     "/shop/{slug}/schedules": {
       get: {
         tags: ["Shop (Public)"],
-        summary: "取得店家開放中的行程列表",
-        description: "無需登入。只回傳 ANNOUNCED 與 OPEN 狀態的行程。可用 month 參數篩選。",
+        summary: "取得店家行程列表",
+        description: "無需登入。不限制狀態，可用 status 參數篩選；可用 month 參數篩選月份。",
         parameters: [
           { name: "slug", in: "path", required: true, schema: { type: "string", example: "nice-bread" }, description: "店家 slug" },
-          { name: "month", in: "query", required: false, schema: { type: "string", example: "2026-05" }, description: "月份（YYYY-MM），不帶則回傳全部開放行程" },
+          { name: "month", in: "query", required: false, schema: { type: "string", example: "2026-05" }, description: "月份（YYYY-MM），不帶則回傳全部行程" },
+          { name: "status", in: "query", required: false, schema: { type: "string", enum: ["DRAFT", "ANNOUNCED", "OPEN", "CLOSED", "FULFILLED"] }, description: "行程狀態篩選（選填，不帶則回傳全部）" },
         ],
         responses: {
           200: { description: "成功" },
-          400: { description: "month 格式錯誤" },
+          400: { description: "month 格式錯誤或 status 不合法" },
           404: { description: "找不到店家" },
         },
       },
@@ -1111,7 +1112,7 @@
       get: {
         tags: ["Shop (Public)"],
         summary: "取得特定日期行程詳細與品項剩餘數量",
-        description: "無需登入。回傳行程資訊與各品項（含 remaining 剩餘數量，null 代表不限量）。",
+        description: "無需登入。回傳該日期行程（不限狀態）與各品項（含 remaining 剩餘數量，null 代表不限量）。",
         parameters: [
           { name: "slug", in: "path", required: true, schema: { type: "string", example: "nice-bread" }, description: "店家 slug" },
           { name: "date", in: "path", required: true, schema: { type: "string", format: "date", example: "2026-05-28" }, description: "行程日期（YYYY-MM-DD）" },
