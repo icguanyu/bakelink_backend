@@ -38,7 +38,7 @@ function normalizeScheduleItemInput(item) {
     if (!Number.isInteger(salesLimitNum) || salesLimitNum < 0) {
       return { error: "item.sales_limit must be a non-negative integer when provided" };
     }
-    salesLimit = salesLimitNum;
+    salesLimit = salesLimitNum === 0 ? null : salesLimitNum;
   }
 
   return {
