@@ -68,26 +68,24 @@ function normalizeSchedulePayload(body = {}, { partial = false } = {}) {
     result.schedule_date = scheduleDate;
   }
 
-  if (!partial || body.order_start_at != null) {
-    if (!body.order_start_at) {
-      return { error: "order_start_at is required" };
-    }
+  if (body.order_start_at != null) {
     const startAt = parseUtcDatetime(body.order_start_at);
     if (startAt.error) {
       return { error: "order_start_at is invalid datetime" };
     }
     result.order_start_at = startAt.value;
+  } else if (!partial) {
+    result.order_start_at = null;
   }
 
-  if (!partial || body.order_end_at != null) {
-    if (!body.order_end_at) {
-      return { error: "order_end_at is required" };
-    }
+  if (body.order_end_at != null) {
     const endAt = parseUtcDatetime(body.order_end_at);
     if (endAt.error) {
       return { error: "order_end_at is invalid datetime" };
     }
     result.order_end_at = endAt.value;
+  } else if (!partial) {
+    result.order_end_at = null;
   }
 
   if (result.order_start_at && result.order_end_at) {
@@ -541,6 +539,10 @@ async function create(req, res) {
   }
   const payload = normalized.value;
 
+  if (payload.status === "OPEN" && (!payload.order_start_at || !payload.order_end_at)) {
+    return res.status(400).json({ message: "order_start_at and order_end_at are required when status is OPEN" });
+  }
+
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
@@ -609,11 +611,13 @@ async function update(req, res) {
     editableFields.push(`status = $${paramIndex++}`);
     values.push(payload.status);
   }
-  if (payload.order_start_at != null) {
+  // 只有切換到 OPEN 或未改變狀態時才更新時間欄位
+  const shouldUpdateTimes = payload.status === undefined || payload.status === "OPEN";
+  if (shouldUpdateTimes && payload.order_start_at != null) {
     editableFields.push(`order_start_at = $${paramIndex++}`);
     values.push(payload.order_start_at);
   }
-  if (payload.order_end_at != null) {
+  if (shouldUpdateTimes && payload.order_end_at != null) {
     editableFields.push(`order_end_at = $${paramIndex++}`);
     values.push(payload.order_end_at);
   }
