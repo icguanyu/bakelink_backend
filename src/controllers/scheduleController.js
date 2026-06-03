@@ -612,7 +612,7 @@ async function update(req, res) {
     values.push(payload.status);
   }
   // 只有切換到 OPEN 或未改變狀態時才更新時間欄位
-  const shouldUpdateTimes = payload.status === undefined || payload.status === "OPEN";
+  const shouldUpdateTimes = payload.status === undefined || payload.status === "OPEN" || payload.status === "ANNOUNCED";
   if (shouldUpdateTimes && payload.order_start_at != null) {
     editableFields.push(`order_start_at = $${paramIndex++}`);
     values.push(payload.order_start_at);
