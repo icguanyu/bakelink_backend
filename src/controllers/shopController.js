@@ -207,6 +207,7 @@ async function getScheduleByDate(req, res) {
                 WHEN si.sales_limit IS NULL THEN NULL
                 ELSE GREATEST(0, si.sales_limit - COALESCE(sold.sold_qty, 0))
               END AS remaining,
+              p.is_sliceable,
               CASE WHEN array_length(p.image_urls, 1) > 0 THEN p.image_urls[1] ELSE NULL END AS image_url
        FROM schedule_items si
        LEFT JOIN products p ON p.id = si.product_id
