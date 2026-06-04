@@ -455,6 +455,7 @@ async function getByDate(req, res) {
               si.unit_price,
               si.sales_limit,
               COALESCE(sold.ordered_quantity, 0)::int AS ordered_quantity,
+              p.is_sliceable,
               p.image_urls,
               CASE WHEN array_length(p.image_urls, 1) > 0 THEN p.image_urls[1] ELSE NULL END AS image_url
        FROM schedule_items si
