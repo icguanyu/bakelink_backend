@@ -30,6 +30,15 @@ function normalizeProductPayload(body = {}) {
     isActive = isActiveRaw;
   }
 
+  const isSliceableRaw = body.is_sliceable;
+  let isSliceable = false;
+  if (isSliceableRaw != null) {
+    if (typeof isSliceableRaw !== "boolean") {
+      return { error: "is_sliceable must be a boolean" };
+    }
+    isSliceable = isSliceableRaw;
+  }
+
   const imageUrlsRaw = body.image_urls;
   let imageUrls = [];
   if (imageUrlsRaw != null) {
@@ -89,6 +98,7 @@ function normalizeProductPayload(body = {}) {
       description,
       ingredients,
       is_active: isActive,
+      is_sliceable: isSliceable,
       image_urls: imageUrls,
       ingredient_details: ingredientDetails,
     },
@@ -121,7 +131,7 @@ async function list(req, res) {
 
       result = await pool.query(
         `SELECT p.id, p.category_id, c.name AS category_name,
-                p.name, p.price, p.description, p.ingredients, p.is_active,
+                p.name, p.price, p.description, p.ingredients, p.is_active, p.is_sliceable,
                 CASE WHEN array_length(p.image_urls, 1) > 0 THEN p.image_urls[1] ELSE NULL END AS image_url,
                 p.ingredient_details
          FROM products p
@@ -137,7 +147,7 @@ async function list(req, res) {
     } else {
       result = await pool.query(
         `SELECT p.id, p.category_id, c.name AS category_name,
-                p.name, p.price, p.description, p.ingredients, p.is_active,
+                p.name, p.price, p.description, p.ingredients, p.is_active, p.is_sliceable,
                 CASE WHEN array_length(p.image_urls, 1) > 0 THEN p.image_urls[1] ELSE NULL END AS image_url,
                 p.ingredient_details
          FROM products p
@@ -167,7 +177,7 @@ async function getById(req, res) {
   try {
     const result = await pool.query(
       `SELECT p.id, p.user_id, p.category_id, c.name AS category_name,
-              p.name, p.price, p.description, p.ingredients, p.is_active, p.image_urls,
+              p.name, p.price, p.description, p.ingredients, p.is_active, p.is_sliceable, p.image_urls,
               CASE WHEN array_length(p.image_urls, 1) > 0 THEN p.image_urls[1] ELSE NULL END AS image_url,
               p.ingredient_details
        FROM products p
@@ -199,11 +209,11 @@ async function create(req, res) {
     const result = await pool.query(
       `INSERT INTO products (
          user_id, category_id, name, price, description, ingredients,
-         is_active, image_urls, ingredient_details
+         is_active, is_sliceable, image_urls, ingredient_details
        )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb)
        RETURNING id, user_id, category_id, name, price, description, ingredients,
-                 is_active,
+                 is_active, is_sliceable,
                  CASE WHEN array_length(image_urls, 1) > 0 THEN image_urls[1] ELSE NULL END AS image_url,
                  ingredient_details`,
       [
@@ -214,6 +224,7 @@ async function create(req, res) {
         payload.description,
         payload.ingredients,
         payload.is_active,
+        payload.is_sliceable,
         payload.image_urls,
         JSON.stringify(payload.ingredient_details),
       ],
@@ -248,12 +259,13 @@ async function update(req, res) {
            description = $4,
            ingredients = $5,
            is_active = $6,
-           image_urls = $7,
-           ingredient_details = $8::jsonb,
+           is_sliceable = $7,
+           image_urls = $8,
+           ingredient_details = $9::jsonb,
            updated_at = NOW()
-       WHERE id = $9 AND user_id = $10
+       WHERE id = $10 AND user_id = $11
        RETURNING id, user_id, category_id, name, price, description, ingredients,
-                 is_active,
+                 is_active, is_sliceable,
                  CASE WHEN array_length(image_urls, 1) > 0 THEN image_urls[1] ELSE NULL END AS image_url,
                  ingredient_details`,
       [
@@ -263,6 +275,7 @@ async function update(req, res) {
         payload.description,
         payload.ingredients,
         payload.is_active,
+        payload.is_sliceable,
         payload.image_urls,
         JSON.stringify(payload.ingredient_details),
         req.params.id,
