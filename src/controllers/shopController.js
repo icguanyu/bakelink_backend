@@ -47,7 +47,7 @@ async function getShopInfo(req, res) {
       `SELECT id, shop_slug, shop_name, owner_name, avatar, intro,
               phone, address,
               payment_methods, pickup_methods, order_pickup_time,
-              business_hours
+              business_hours, line_url, facebook_url, instagram_url
        FROM users
        WHERE shop_slug = $1`,
       [slug],
@@ -68,6 +68,9 @@ async function getShopInfo(req, res) {
       pickupMethods: row.pickup_methods || [],
       orderPickupTime: formatTimeToHHmm(row.order_pickup_time) || "",
       businessHours: row.business_hours || [],
+      lineUrl: row.line_url || "",
+      facebookUrl: row.facebook_url || "",
+      instagramUrl: row.instagram_url || "",
     });
   } catch (error) {
     console.error("GET /shop/:slug error:", error.message);

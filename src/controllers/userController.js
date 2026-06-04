@@ -220,6 +220,16 @@ function normalizeUserSettingsPayload(body = {}, { partial = false } = {}) {
     result.business_hours = normalized.value;
   }
 
+  if (!partial || body.lineUrl != null) {
+    result.line_url = normalizeNullableString(body.lineUrl);
+  }
+  if (!partial || body.facebookUrl != null) {
+    result.facebook_url = normalizeNullableString(body.facebookUrl);
+  }
+  if (!partial || body.instagramUrl != null) {
+    result.instagram_url = normalizeNullableString(body.instagramUrl);
+  }
+
   return { value: result };
 }
 
@@ -260,6 +270,9 @@ function mapUserSettingsRow(row) {
       note: toText(normalized.packaging_note),
     },
     businessHours: normalized.business_hours || [],
+    lineUrl: toText(normalized.line_url),
+    facebookUrl: toText(normalized.facebook_url),
+    instagramUrl: toText(normalized.instagram_url),
   };
 }
 
@@ -288,7 +301,7 @@ async function getMe(req, res) {
               payment_methods, pickup_methods,
               shipping_free_threshold, shipping_fee, shipping_note,
               packaging_default_pack, packaging_pack_fee, packaging_eco_discount, packaging_note,
-              business_hours
+              business_hours, line_url, facebook_url, instagram_url
        FROM users
        WHERE id = $1`,
       [req.user.sub],
@@ -380,6 +393,15 @@ async function updateMe(req, res) {
     fields.push(`business_hours = $${paramIndex++}::jsonb`);
     values.push(payload.business_hours == null ? null : JSON.stringify(payload.business_hours));
   }
+  if (Object.prototype.hasOwnProperty.call(payload, "line_url")) {
+    assign("line_url", payload.line_url);
+  }
+  if (Object.prototype.hasOwnProperty.call(payload, "facebook_url")) {
+    assign("facebook_url", payload.facebook_url);
+  }
+  if (Object.prototype.hasOwnProperty.call(payload, "instagram_url")) {
+    assign("instagram_url", payload.instagram_url);
+  }
 
   try {
     let result;
@@ -394,7 +416,7 @@ async function updateMe(req, res) {
                    payment_methods, pickup_methods,
                    shipping_free_threshold, shipping_fee, shipping_note,
                    packaging_default_pack, packaging_pack_fee, packaging_eco_discount, packaging_note,
-                   business_hours`,
+                   business_hours, line_url, facebook_url, instagram_url`,
         [...values, req.user.sub],
       );
     } else {
