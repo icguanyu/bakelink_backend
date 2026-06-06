@@ -26,6 +26,7 @@ app.use("/schedules", require("./routes/schedules"));
 app.use("/orders", require("./routes/orders"));
 app.use("/UploadFile", require("./routes/uploadFile"));
 app.use("/UploadAvatar", require("./routes/uploadAvatar"));
+app.use("/UploadCover", require("./routes/uploadCover"));
 app.use("/shop", require("./routes/shop"));
 
 module.exports = app;

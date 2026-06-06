@@ -52,7 +52,7 @@ async function uploadFile(req, res) {
 
     const { ext } = meta.value;
     const randomPart = crypto.randomBytes(8).toString("hex");
-    const objectPath = `${req.user.sub}/${Date.now()}-${randomPart}${ext}`;
+    const objectPath = `${req.user.sub}/products/${Date.now()}-${randomPart}${ext}`;
 
     const { error: uploadError } = await supabaseClient.storage
       .from(supabase.storageBucket)
@@ -134,7 +134,7 @@ async function uploadAvatar(req, res) {
 
     const { ext } = meta.value;
     const randomPart = crypto.randomBytes(8).toString("hex");
-    const objectPath = `${req.user.sub}/avatar-${Date.now()}-${randomPart}${ext}`;
+    const objectPath = `${req.user.sub}/avatars/${Date.now()}-${randomPart}${ext}`;
     uploadedObjectPath = objectPath;
 
     const { error: uploadError } = await supabaseClient.storage
@@ -231,4 +231,138 @@ async function uploadAvatar(req, res) {
   }
 }
 
-module.exports = { uploadFile, uploadAvatar };
+async function uploadCover(req, res) {
+  if (!supabase.storageBucket) {
+    return res.status(500).json({ message: "SUPABASE_STORAGE_BUCKET is not configured" });
+  }
+
+  const supabaseClient = getSupabaseClient();
+  if (!supabaseClient) {
+    return res.status(500).json({ message: "Supabase client is not configured" });
+  }
+
+  const client = await pool.connect();
+  let uploadedObjectPath = null;
+  try {
+    const userResult = await client.query(
+      `SELECT cover, cover_object_path
+       FROM users
+       WHERE id = $1`,
+      [req.user.sub],
+    );
+
+    if (!userResult.rows[0]) {
+      client.release();
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    const previousCoverUrl = userResult.rows[0].cover || null;
+    const previousObjectPath = userResult.rows[0].cover_object_path || null;
+
+    const file = req.file;
+    const meta = resolveUploadedFileMeta(file);
+    if (meta.error) {
+      client.release();
+      return res.status(400).json({ message: meta.error });
+    }
+
+    const { ext } = meta.value;
+    const randomPart = crypto.randomBytes(8).toString("hex");
+    const objectPath = `${req.user.sub}/covers/${Date.now()}-${randomPart}${ext}`;
+    uploadedObjectPath = objectPath;
+
+    const { error: uploadError } = await supabaseClient.storage
+      .from(supabase.storageBucket)
+      .upload(objectPath, file.buffer, {
+        contentType: file.mimetype,
+        upsert: false,
+      });
+
+    if (uploadError) {
+      client.release();
+      return res.status(502).json({ message: "Failed to upload cover to storage", error: uploadError.message });
+    }
+
+    const { data: publicUrlData } = supabaseClient.storage
+      .from(supabase.storageBucket)
+      .getPublicUrl(objectPath);
+
+    const publicUrl = publicUrlData?.publicUrl || null;
+    if (!publicUrl) {
+      client.release();
+      return res.status(502).json({ message: "Failed to resolve uploaded cover URL" });
+    }
+
+    try {
+      await client.query("BEGIN");
+      await client.query(
+        `UPDATE users
+         SET cover = $1, cover_object_path = $2, updated_at = NOW()
+         WHERE id = $3`,
+        [publicUrl, objectPath, req.user.sub],
+      );
+
+      await client.query(
+        `INSERT INTO uploaded_files (
+           user_id, bucket, object_path, public_url, original_name, mime_type, size_bytes
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+         RETURNING id`,
+        [
+          req.user.sub,
+          supabase.storageBucket,
+          objectPath,
+          publicUrl,
+          file.originalname || "",
+          file.mimetype || "",
+          file.size || 0,
+        ],
+      );
+      await client.query("COMMIT");
+    } catch (dbError) {
+      await client.query("ROLLBACK");
+      const { error: cleanupError } = await supabaseClient.storage
+        .from(supabase.storageBucket)
+        .remove([objectPath]);
+      if (cleanupError) {
+        console.error("Failed to cleanup cover after DB error:", cleanupError.message);
+      }
+      throw dbError;
+    } finally {
+      client.release();
+    }
+
+    if (previousObjectPath && previousObjectPath !== objectPath) {
+      const { error: removeError } = await supabaseClient.storage
+        .from(supabase.storageBucket)
+        .remove([previousObjectPath]);
+      if (!removeError) {
+        await pool.query(
+          `DELETE FROM uploaded_files
+           WHERE user_id = $1 AND bucket = $2 AND object_path = $3`,
+          [req.user.sub, supabase.storageBucket, previousObjectPath],
+        );
+      }
+    } else if (previousCoverUrl && previousCoverUrl !== publicUrl) {
+      await pool.query(
+        `DELETE FROM uploaded_files
+         WHERE user_id = $1 AND bucket = $2 AND public_url = $3`,
+        [req.user.sub, supabase.storageBucket, previousCoverUrl],
+      );
+    }
+
+    return res.status(201).json({ url: publicUrl });
+  } catch (error) {
+    if (uploadedObjectPath) {
+      const { error: cleanupError } = await supabaseClient.storage
+        .from(supabase.storageBucket)
+        .remove([uploadedObjectPath]);
+      if (cleanupError) {
+        console.error("Failed to cleanup cover:", cleanupError.message);
+      }
+    }
+    console.error("POST /UploadCover error:", error.message);
+    return res.status(500).json({ message: "Failed to upload cover", error: error.message });
+  }
+}
+
+module.exports = { uploadFile, uploadAvatar, uploadCover };
