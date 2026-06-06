@@ -24,6 +24,8 @@ CREATE TABLE IF NOT EXISTS users (
   packaging_note TEXT,
   business_hours JSONB,
   avatar_object_path TEXT,
+  cover TEXT,
+  cover_object_path TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -90,6 +92,12 @@ ADD COLUMN IF NOT EXISTS business_hours JSONB;
 
 ALTER TABLE users
 ADD COLUMN IF NOT EXISTS avatar_object_path TEXT;
+
+ALTER TABLE users
+ADD COLUMN IF NOT EXISTS cover TEXT;
+
+ALTER TABLE users
+ADD COLUMN IF NOT EXISTS cover_object_path TEXT;
 
 INSERT INTO users (name, phone, email, role)
 VALUES

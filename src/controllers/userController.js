@@ -95,6 +95,9 @@ function normalizeUserSettingsPayload(body = {}, { partial = false } = {}) {
   if (!partial || body.avatar != null) {
     result.avatar = normalizeNullableString(body.avatar);
   }
+  if (!partial || body.cover != null) {
+    result.cover = normalizeNullableString(body.cover);
+  }
   if (!partial || body.shopName != null) {
     result.shop_name = normalizeNullableString(body.shopName);
   }
@@ -249,6 +252,7 @@ function mapUserSettingsRow(row) {
   return {
     shopSlug: toText(normalized.shop_slug),
     avatar: toText(normalized.avatar),
+    cover: toText(normalized.cover),
     shopName: toText(normalized.shop_name),
     owner: toText(normalized.owner_name),
     phone: toText(normalized.phone),
@@ -297,7 +301,7 @@ async function getMe(req, res) {
   try {
     const result = await pool.query(
       `SELECT id, name, phone, email, role,
-              shop_slug, avatar, shop_name, owner_name, address, intro, order_pickup_time,
+              shop_slug, avatar, cover, shop_name, owner_name, address, intro, order_pickup_time,
               payment_methods, pickup_methods,
               shipping_free_threshold, shipping_fee, shipping_note,
               packaging_default_pack, packaging_pack_fee, packaging_eco_discount, packaging_note,
@@ -340,6 +344,10 @@ async function updateMe(req, res) {
   if (Object.prototype.hasOwnProperty.call(payload, "avatar")) {
     assign("avatar", payload.avatar);
     assign("avatar_object_path", null);
+  }
+  if (Object.prototype.hasOwnProperty.call(payload, "cover")) {
+    assign("cover", payload.cover);
+    assign("cover_object_path", null);
   }
   if (Object.prototype.hasOwnProperty.call(payload, "shop_name")) {
     assign("shop_name", payload.shop_name);
@@ -412,7 +420,7 @@ async function updateMe(req, res) {
          SET ${fields.join(", ")}
          WHERE id = $${paramIndex}
          RETURNING id, name, phone, email, role,
-                   shop_slug, avatar, shop_name, owner_name, address, intro, order_pickup_time,
+                   shop_slug, avatar, cover, shop_name, owner_name, address, intro, order_pickup_time,
                    payment_methods, pickup_methods,
                    shipping_free_threshold, shipping_fee, shipping_note,
                    packaging_default_pack, packaging_pack_fee, packaging_eco_discount, packaging_note,
@@ -422,11 +430,11 @@ async function updateMe(req, res) {
     } else {
       result = await pool.query(
         `SELECT id, name, phone, email, role,
-                shop_slug, avatar, shop_name, owner_name, address, intro, order_pickup_time,
+                shop_slug, avatar, cover, shop_name, owner_name, address, intro, order_pickup_time,
                 payment_methods, pickup_methods,
                 shipping_free_threshold, shipping_fee, shipping_note,
                 packaging_default_pack, packaging_pack_fee, packaging_eco_discount, packaging_note,
-                business_hours
+                business_hours, line_url, facebook_url, instagram_url
          FROM users
          WHERE id = $1`,
         [req.user.sub],

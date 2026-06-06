@@ -1,0 +1,3 @@
+ALTER TABLE users
+  ADD COLUMN IF NOT EXISTS cover TEXT,
+  ADD COLUMN IF NOT EXISTS cover_object_path TEXT;

@@ -52,9 +52,9 @@ async function register(req, res) {
     const shopSlug = await generateUniqueSlug(client, generateSlugFromEmail(normalizedEmail));
 
     const result = await client.query(
-      `INSERT INTO users (name, phone, email, password_hash, role, shop_slug)
-       VALUES ($1, $2, $3, $4, 'user', $5)
-       RETURNING id, name, phone, email, role, shop_slug`,
+      `INSERT INTO users (name, shop_name, phone, email, password_hash, role, shop_slug)
+       VALUES ($1, $1, $2, $3, $4, 'user', $5)
+       RETURNING id, name, shop_name, phone, email, role, shop_slug`,
       [
         String(name).trim(),
         phone ? String(phone).trim() : null,
