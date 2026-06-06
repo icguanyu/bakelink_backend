@@ -82,6 +82,7 @@
             example: "nice-bread",
           },
           avatar: { type: "string", description: "商家頭像 URL", example: "" },
+          cover: { type: "string", description: "商家封面照 URL", example: "" },
           shopName: { type: "string", description: "店名", example: "山丘烘焙坊" },
           owner: { type: "string", description: "負責人名稱", example: "王麵麥" },
           phone: { type: "string", description: "電話", example: "02-1234-5678" },
@@ -1311,6 +1312,46 @@
                     type: "string",
                     format: "binary",
                     description: "頭像圖片檔案",
+                  },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          201: {
+            description: "上傳成功",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/UploadFileResponse" },
+              },
+            },
+          },
+          400: { description: "請求格式錯誤或檔案不合法" },
+          401: { description: "未授權" },
+          500: { description: "伺服器錯誤" },
+          502: { description: "儲存服務錯誤" },
+        },
+      },
+    },
+    "/UploadCover": {
+      post: {
+        tags: ["Upload"],
+        summary: "上傳使用者封面照",
+        description: "使用 multipart/form-data，上傳欄位名稱為 file。上傳後自動更新 users.cover。",
+        security: [{ BearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "multipart/form-data": {
+              schema: {
+                type: "object",
+                required: ["file"],
+                properties: {
+                  file: {
+                    type: "string",
+                    format: "binary",
+                    description: "封面圖片檔案",
                   },
                 },
               },
