@@ -52,8 +52,8 @@ async function register(req, res) {
     const shopSlug = await generateUniqueSlug(client, generateSlugFromEmail(normalizedEmail));
 
     const result = await client.query(
-      `INSERT INTO users (name, shop_name, phone, email, password_hash, role, shop_slug)
-       VALUES ($1, $1, $2, $3, $4, 'user', $5)
+      `INSERT INTO users (name, shop_name, phone, email, password_hash, role, shop_slug, payment_methods, pickup_methods)
+       VALUES ($1, $1, $2, $3, $4, 'user', $5, $6, $7)
        RETURNING id, name, shop_name, phone, email, role, shop_slug`,
       [
         String(name).trim(),
@@ -61,6 +61,8 @@ async function register(req, res) {
         normalizedEmail,
         passwordHash,
         shopSlug,
+        ["cash"],
+        ["pickup"],
       ],
     );
     await client.query("COMMIT");
