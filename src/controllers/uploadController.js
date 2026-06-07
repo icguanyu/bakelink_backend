@@ -20,13 +20,13 @@ function resolveSafeExtension(fileName = "", mimeType = "") {
 
 function resolveUploadedFileMeta(file) {
   if (!file) {
-    return { error: "file is required in form-data" };
+    return { error: "請在 form-data 中附上檔案" };
   }
   if (!file.size || file.size <= 0) {
-    return { error: "file must not be empty" };
+    return { error: "上傳的檔案不可為空" };
   }
   if (!file.mimetype || !file.mimetype.startsWith(upload.allowedMimePrefix)) {
-    return { error: "Only image files are allowed" };
+    return { error: "僅允許上傳圖片格式的檔案" };
   }
 
   const ext = resolveSafeExtension(file.originalname, file.mimetype);
@@ -36,12 +36,12 @@ function resolveUploadedFileMeta(file) {
 async function uploadFile(req, res) {
   try {
     if (!supabase.storageBucket) {
-      return res.status(500).json({ message: "SUPABASE_STORAGE_BUCKET is not configured" });
+      return res.status(500).json({ message: "儲存空間未設定，請聯繫系統管理員" });
     }
 
     const supabaseClient = getSupabaseClient();
     if (!supabaseClient) {
-      return res.status(500).json({ message: "Supabase client is not configured" });
+      return res.status(500).json({ message: "儲存服務未設定，請聯繫系統管理員" });
     }
 
     const file = req.file;
@@ -62,7 +62,7 @@ async function uploadFile(req, res) {
       });
 
     if (uploadError) {
-      return res.status(502).json({ message: "Failed to upload file to storage", error: uploadError.message });
+      return res.status(502).json({ message: "上傳檔案至儲存空間失敗", error: uploadError.message });
     }
 
     const { data: publicUrlData } = supabaseClient.storage
@@ -71,7 +71,7 @@ async function uploadFile(req, res) {
 
     const publicUrl = publicUrlData?.publicUrl || null;
     if (!publicUrl) {
-      return res.status(502).json({ message: "Failed to resolve uploaded file URL" });
+      return res.status(502).json({ message: "無法取得上傳檔案的網址" });
     }
 
     await pool.query(
@@ -93,18 +93,18 @@ async function uploadFile(req, res) {
     return res.status(201).json({ url: publicUrl });
   } catch (error) {
     console.error("POST /UploadFile error:", error.message);
-    return res.status(500).json({ message: "Failed to upload file", error: error.message });
+    return res.status(500).json({ message: "上傳檔案失敗", error: error.message });
   }
 }
 
 async function uploadAvatar(req, res) {
   if (!supabase.storageBucket) {
-    return res.status(500).json({ message: "SUPABASE_STORAGE_BUCKET is not configured" });
+    return res.status(500).json({ message: "儲存空間未設定，請聯繫系統管理員" });
   }
 
   const supabaseClient = getSupabaseClient();
   if (!supabaseClient) {
-    return res.status(500).json({ message: "Supabase client is not configured" });
+    return res.status(500).json({ message: "儲存服務未設定，請聯繫系統管理員" });
   }
 
   const client = await pool.connect();
@@ -119,7 +119,7 @@ async function uploadAvatar(req, res) {
 
     if (!userResult.rows[0]) {
       client.release();
-      return res.status(404).json({ message: "User not found" });
+      return res.status(404).json({ message: "找不到使用者" });
     }
 
     const previousAvatarUrl = userResult.rows[0].avatar || null;
@@ -146,7 +146,7 @@ async function uploadAvatar(req, res) {
 
     if (uploadError) {
       client.release();
-      return res.status(502).json({ message: "Failed to upload avatar to storage", error: uploadError.message });
+      return res.status(502).json({ message: "上傳大頭貼至儲存空間失敗", error: uploadError.message });
     }
 
     const { data: publicUrlData } = supabaseClient.storage
@@ -156,7 +156,7 @@ async function uploadAvatar(req, res) {
     const publicUrl = publicUrlData?.publicUrl || null;
     if (!publicUrl) {
       client.release();
-      return res.status(502).json({ message: "Failed to resolve uploaded avatar URL" });
+      return res.status(502).json({ message: "無法取得上傳大頭貼的網址" });
     }
 
     try {
@@ -227,18 +227,18 @@ async function uploadAvatar(req, res) {
       }
     }
     console.error("POST /UploadAvatar error:", error.message);
-    return res.status(500).json({ message: "Failed to upload avatar", error: error.message });
+    return res.status(500).json({ message: "上傳大頭貼失敗", error: error.message });
   }
 }
 
 async function uploadCover(req, res) {
   if (!supabase.storageBucket) {
-    return res.status(500).json({ message: "SUPABASE_STORAGE_BUCKET is not configured" });
+    return res.status(500).json({ message: "儲存空間未設定，請聯繫系統管理員" });
   }
 
   const supabaseClient = getSupabaseClient();
   if (!supabaseClient) {
-    return res.status(500).json({ message: "Supabase client is not configured" });
+    return res.status(500).json({ message: "儲存服務未設定，請聯繫系統管理員" });
   }
 
   const client = await pool.connect();
@@ -253,7 +253,7 @@ async function uploadCover(req, res) {
 
     if (!userResult.rows[0]) {
       client.release();
-      return res.status(404).json({ message: "User not found" });
+      return res.status(404).json({ message: "找不到使用者" });
     }
 
     const previousCoverUrl = userResult.rows[0].cover || null;
@@ -280,7 +280,7 @@ async function uploadCover(req, res) {
 
     if (uploadError) {
       client.release();
-      return res.status(502).json({ message: "Failed to upload cover to storage", error: uploadError.message });
+      return res.status(502).json({ message: "上傳封面至儲存空間失敗", error: uploadError.message });
     }
 
     const { data: publicUrlData } = supabaseClient.storage
@@ -290,7 +290,7 @@ async function uploadCover(req, res) {
     const publicUrl = publicUrlData?.publicUrl || null;
     if (!publicUrl) {
       client.release();
-      return res.status(502).json({ message: "Failed to resolve uploaded cover URL" });
+      return res.status(502).json({ message: "無法取得上傳封面的網址" });
     }
 
     try {
@@ -361,7 +361,7 @@ async function uploadCover(req, res) {
       }
     }
     console.error("POST /UploadCover error:", error.message);
-    return res.status(500).json({ message: "Failed to upload cover", error: error.message });
+    return res.status(500).json({ message: "上傳封面失敗", error: error.message });
   }
 }
 

@@ -53,7 +53,7 @@ async function getShopInfo(req, res) {
       [slug],
     );
     if (!result.rows[0]) {
-      return res.status(404).json({ message: "Shop not found" });
+      return res.status(404).json({ message: "找不到商店" });
     }
     const row = result.rows[0];
     return res.json({
@@ -75,7 +75,7 @@ async function getShopInfo(req, res) {
     });
   } catch (error) {
     console.error("GET /shop/:slug error:", error.message);
-    return res.status(500).json({ message: "Failed to fetch shop info" });
+    return res.status(500).json({ message: "取得商店資訊失敗" });
   }
 }
 
@@ -88,7 +88,7 @@ async function listSchedules(req, res) {
     const slug = String(req.params.slug || "").trim().toLowerCase();
     const userId = await resolveShopUserId(slug);
     if (!userId) {
-      return res.status(404).json({ message: "Shop not found" });
+      return res.status(404).json({ message: "找不到商店" });
     }
 
     const month = req.query.month ? String(req.query.month).trim() : null;
@@ -102,7 +102,7 @@ async function listSchedules(req, res) {
 
     if (month) {
       if (!/^\d{4}-\d{2}$/.test(month)) {
-        return res.status(400).json({ message: "month must be YYYY-MM" });
+        return res.status(400).json({ message: "month 參數格式必須為 YYYY-MM" });
       }
       const [yearText, monthText] = month.split("-");
       const year = Number(yearText);
@@ -169,7 +169,7 @@ async function listSchedules(req, res) {
     });
   } catch (error) {
     console.error("GET /shop/:slug/schedules error:", error.message);
-    return res.status(500).json({ message: "Failed to fetch schedules" });
+    return res.status(500).json({ message: "取得排程列表失敗" });
   }
 }
 
@@ -183,12 +183,12 @@ async function getScheduleByDate(req, res) {
     const date = String(req.params.date || "").trim();
 
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-      return res.status(400).json({ message: "date must be YYYY-MM-DD" });
+      return res.status(400).json({ message: "date 參數格式必須為 YYYY-MM-DD" });
     }
 
     const userId = await resolveShopUserId(slug);
     if (!userId) {
-      return res.status(404).json({ message: "Shop not found" });
+      return res.status(404).json({ message: "找不到商店" });
     }
 
     const scheduleResult = await pool.query(
@@ -202,7 +202,7 @@ async function getScheduleByDate(req, res) {
     );
     const schedule = scheduleResult.rows[0];
     if (!schedule) {
-      return res.status(404).json({ message: "Schedule not found" });
+      return res.status(404).json({ message: "找不到排程" });
     }
 
     const itemsResult = await pool.query(
@@ -236,7 +236,7 @@ async function getScheduleByDate(req, res) {
     });
   } catch (error) {
     console.error("GET /shop/:slug/schedules/:date error:", error.message);
-    return res.status(500).json({ message: "Failed to fetch schedule" });
+    return res.status(500).json({ message: "取得排程失敗" });
   }
 }
 
@@ -249,7 +249,7 @@ async function listCategories(req, res) {
     const slug = String(req.params.slug || "").trim().toLowerCase();
     const userId = await resolveShopUserId(slug);
     if (!userId) {
-      return res.status(404).json({ message: "Shop not found" });
+      return res.status(404).json({ message: "找不到商店" });
     }
 
     const result = await pool.query(
@@ -264,7 +264,7 @@ async function listCategories(req, res) {
     return res.json({ data: result.rows });
   } catch (error) {
     console.error("GET /shop/:slug/categories error:", error.message);
-    return res.status(500).json({ message: "Failed to fetch categories" });
+    return res.status(500).json({ message: "取得分類列表失敗" });
   }
 }
 
@@ -277,7 +277,7 @@ async function listProducts(req, res) {
     const slug = String(req.params.slug || "").trim().toLowerCase();
     const userId = await resolveShopUserId(slug);
     if (!userId) {
-      return res.status(404).json({ message: "Shop not found" });
+      return res.status(404).json({ message: "找不到商店" });
     }
 
     const categoryId = req.query.category_id ? String(req.query.category_id).trim() : null;
@@ -303,7 +303,7 @@ async function listProducts(req, res) {
     });
   } catch (error) {
     console.error("GET /shop/:slug/products error:", error.message);
-    return res.status(500).json({ message: "Failed to fetch products" });
+    return res.status(500).json({ message: "取得商品列表失敗" });
   }
 }
 
@@ -329,30 +329,30 @@ function normalizeCustomerOrderPayload(body = {}) {
   const pickupAliasMap = { PICKUP: "PICKUP", SELF_PICKUP: "PICKUP", DELIVERY: "DELIVERY", 自取: "PICKUP", 宅配: "DELIVERY" };
   const pickupMethod = pickupAliasMap[rawPickup] || "PICKUP";
 
-  if (!scheduleId) return { error: "schedule_id is required" };
-  if (!customerName) return { error: "customer_name is required" };
-  if (!customerPhone) return { error: "customer_phone is required" };
-  if (!paymentMethod) return { error: "payment_method is required" };
+  if (!scheduleId) return { error: "schedule_id 為必填" };
+  if (!customerName) return { error: "顧客姓名（customer_name）為必填" };
+  if (!customerPhone) return { error: "顧客電話（customer_phone）為必填" };
+  if (!paymentMethod) return { error: "付款方式（payment_method）為必填" };
 
   const pickupTime = String(body.pickup_time || "").trim();
-  if (!pickupTime) return { error: "pickup_time is required" };
+  if (!pickupTime) return { error: "取件時間（pickup_time）為必填" };
   if (!/^([0-1]?\d|2[0-3]):[0-5]\d$/.test(pickupTime)) {
-    return { error: "pickup_time must be HH:mm" };
+    return { error: "pickup_time 格式必須為 HH:mm（例如：12:00）" };
   }
 
   if (!Array.isArray(body.items) || body.items.length === 0) {
-    return { error: "items is required and must not be empty" };
+    return { error: "訂單商品（items）為必填且不可為空" };
   }
 
   const items = [];
   for (const item of body.items) {
-    if (!item || typeof item !== "object") return { error: "each item must be an object" };
+    if (!item || typeof item !== "object") return { error: "每筆商品項目必須為物件格式" };
     const quantity = Number(item.quantity);
     if (!Number.isInteger(quantity) || quantity <= 0) {
-      return { error: "item.quantity must be a positive integer" };
+      return { error: "item.quantity 必須為正整數" };
     }
     const scheduleItemId = String(item.schedule_item_id || "").trim();
-    if (!scheduleItemId) return { error: "item.schedule_item_id is required" };
+    if (!scheduleItemId) return { error: "item.schedule_item_id 為必填" };
     const isSliced = typeof item.is_sliced === "boolean" ? item.is_sliced : false;
     items.push({ schedule_item_id: scheduleItemId, quantity, is_sliced: isSliced });
   }
@@ -383,7 +383,7 @@ async function createOrder(req, res) {
   const slug = String(req.params.slug || "").trim().toLowerCase();
   const userId = await resolveShopUserId(slug);
   if (!userId) {
-    return res.status(404).json({ message: "Shop not found" });
+    return res.status(404).json({ message: "找不到商店" });
   }
 
   const client = await pool.connect();
@@ -400,11 +400,11 @@ async function createOrder(req, res) {
     const schedule = scheduleResult.rows[0];
     if (!schedule) {
       await client.query("ROLLBACK");
-      return res.status(404).json({ message: "Schedule not found" });
+      return res.status(404).json({ message: "找不到排程" });
     }
     if (schedule.status !== "OPEN") {
       await client.query("ROLLBACK");
-      return res.status(409).json({ message: "This schedule is not accepting orders" });
+      return res.status(409).json({ message: "此排程目前不開放接單" });
     }
 
     const orderDate = String(schedule.schedule_date || "").replace(/-/g, "");
@@ -519,13 +519,13 @@ async function createOrder(req, res) {
   } catch (error) {
     await client.query("ROLLBACK");
     if (error.message === "SCHEDULE_ITEM_NOT_FOUND") {
-      return res.status(400).json({ message: "Some items are not in this schedule" });
+      return res.status(400).json({ message: "部分商品不在此排程中" });
     }
     if (error.message === "SALES_LIMIT_EXCEEDED") {
-      return res.status(409).json({ message: "Sales limit exceeded for one or more items" });
+      return res.status(409).json({ message: "一或多項商品已超過銷售數量上限" });
     }
     console.error("POST /shop/:slug/orders error:", error.message);
-    return res.status(500).json({ message: "Failed to create order" });
+    return res.status(500).json({ message: "建立訂單失敗" });
   } finally {
     client.release();
   }
@@ -541,12 +541,12 @@ async function listOrdersByPhone(req, res) {
     const phone = String(req.query.phone || "").trim();
 
     if (!phone) {
-      return res.status(400).json({ message: "phone query parameter is required" });
+      return res.status(400).json({ message: "查詢時必須提供 phone 參數" });
     }
 
     const userId = await resolveShopUserId(slug);
     if (!userId) {
-      return res.status(404).json({ message: "Shop not found" });
+      return res.status(404).json({ message: "找不到商店" });
     }
 
     const ordersResult = await pool.query(
@@ -595,7 +595,7 @@ async function listOrdersByPhone(req, res) {
     });
   } catch (error) {
     console.error("GET /shop/:slug/orders error:", error.message);
-    return res.status(500).json({ message: "Failed to fetch orders" });
+    return res.status(500).json({ message: "取得訂單列表失敗" });
   }
 }
 
@@ -610,12 +610,12 @@ async function getOrderByNo(req, res) {
     const phone = String(req.query.phone || "").trim();
 
     if (!phone) {
-      return res.status(400).json({ message: "phone query parameter is required" });
+      return res.status(400).json({ message: "查詢時必須提供 phone 參數" });
     }
 
     const userId = await resolveShopUserId(slug);
     if (!userId) {
-      return res.status(404).json({ message: "Shop not found" });
+      return res.status(404).json({ message: "找不到商店" });
     }
 
     const orderResult = await pool.query(
@@ -633,7 +633,7 @@ async function getOrderByNo(req, res) {
 
     const order = orderResult.rows[0];
     if (!order) {
-      return res.status(404).json({ message: "Order not found" });
+      return res.status(404).json({ message: "找不到訂單" });
     }
 
     const itemsResult = await pool.query(
@@ -656,7 +656,7 @@ async function getOrderByNo(req, res) {
     });
   } catch (error) {
     console.error("GET /shop/:slug/orders/:orderNo error:", error.message);
-    return res.status(500).json({ message: "Failed to fetch order" });
+    return res.status(500).json({ message: "取得訂單失敗" });
   }
 }
 

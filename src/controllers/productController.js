@@ -8,12 +8,12 @@ const { normalizeDecimalFields } = require("../utils/number");
 function normalizeProductPayload(body = {}) {
   const { name, category_id, price } = body;
   if (!name || !String(name).trim() || !category_id) {
-    return { error: "name and category_id are required" };
+    return { error: "商品名稱（name）與分類（category_id）為必填" };
   }
 
   const priceNum = Number(price);
   if (!Number.isFinite(priceNum) || priceNum < 0) {
-    return { error: "price must be a non-negative number" };
+    return { error: "price 必須為非負數" };
   }
 
   const description =
@@ -25,7 +25,7 @@ function normalizeProductPayload(body = {}) {
   let isActive = true;
   if (isActiveRaw != null) {
     if (typeof isActiveRaw !== "boolean") {
-      return { error: "is_active must be a boolean" };
+      return { error: "is_active 必須為布林值（true/false）" };
     }
     isActive = isActiveRaw;
   }
@@ -34,7 +34,7 @@ function normalizeProductPayload(body = {}) {
   let isSliceable = false;
   if (isSliceableRaw != null) {
     if (typeof isSliceableRaw !== "boolean") {
-      return { error: "is_sliceable must be a boolean" };
+      return { error: "is_sliceable 必須為布林值（true/false）" };
     }
     isSliceable = isSliceableRaw;
   }
@@ -43,11 +43,11 @@ function normalizeProductPayload(body = {}) {
   let imageUrls = [];
   if (imageUrlsRaw != null) {
     if (!Array.isArray(imageUrlsRaw)) {
-      return { error: "image_urls must be an array of strings" };
+      return { error: "image_urls 必須為字串陣列" };
     }
     imageUrls = imageUrlsRaw.map((url) => String(url || "").trim());
     if (imageUrls.some((url) => !url)) {
-      return { error: "image_urls cannot contain empty values" };
+      return { error: "image_urls 不可包含空字串" };
     }
   }
 
@@ -55,12 +55,12 @@ function normalizeProductPayload(body = {}) {
   let ingredientDetails = [];
   if (ingredientDetailsRaw != null) {
     if (!Array.isArray(ingredientDetailsRaw)) {
-      return { error: "ingredient_details must be an array" };
+      return { error: "ingredient_details 必須為陣列" };
     }
 
     ingredientDetails = ingredientDetailsRaw.map((item) => {
       if (!item || typeof item !== "object" || Array.isArray(item)) {
-        return { __invalid: "each ingredient_details item must be an object" };
+        return { __invalid: "ingredient_details 的每個項目必須為物件" };
       }
 
       const detailName = String(item.name || "").trim();
@@ -68,13 +68,13 @@ function normalizeProductPayload(body = {}) {
       const isVisible = item.is_visible;
 
       if (!detailName) {
-        return { __invalid: "ingredient detail name is required" };
+        return { __invalid: "成分名稱（name）為必填" };
       }
       if (!Number.isFinite(gramsNum) || gramsNum < 0) {
-        return { __invalid: "ingredient detail grams must be non-negative" };
+        return { __invalid: "成分的 grams 必須為非負數" };
       }
       if (typeof isVisible !== "boolean") {
-        return { __invalid: "ingredient detail is_visible must be boolean" };
+        return { __invalid: "成分的 is_visible 必須為布林值" };
       }
 
       return {
@@ -169,7 +169,7 @@ async function list(req, res) {
     });
   } catch (error) {
     console.error("GET /products error:", error.message);
-    res.status(500).json({ message: "Failed to fetch products", error: error.message });
+    res.status(500).json({ message: "取得商品列表失敗", error: error.message });
   }
 }
 
@@ -188,13 +188,13 @@ async function getById(req, res) {
     );
 
     if (!result.rows[0]) {
-      return res.status(404).json({ message: "Product not found" });
+      return res.status(404).json({ message: "找不到商品" });
     }
 
     res.json(normalizeDecimalFields(result.rows[0], ["price"]));
   } catch (error) {
     console.error("GET /products/:id error:", error.message);
-    res.status(500).json({ message: "Failed to fetch product", error: error.message });
+    res.status(500).json({ message: "取得商品失敗", error: error.message });
   }
 }
 
@@ -233,13 +233,13 @@ async function create(req, res) {
     res.status(201).json(normalizeDecimalFields(result.rows[0], ["price"]));
   } catch (error) {
     if (error.code === "23505") {
-      return res.status(409).json({ message: "Product already exists" });
+      return res.status(409).json({ message: "商品名稱已存在" });
     }
     if (error.code === "23503") {
-      return res.status(400).json({ message: "Invalid category_id for current user" });
+      return res.status(400).json({ message: "分類 ID 無效或不屬於此帳號" });
     }
     console.error("POST /products error:", error.message);
-    res.status(500).json({ message: "Failed to create product", error: error.message });
+    res.status(500).json({ message: "建立商品失敗", error: error.message });
   }
 }
 
@@ -284,19 +284,19 @@ async function update(req, res) {
     );
 
     if (!result.rows[0]) {
-      return res.status(404).json({ message: "Product not found" });
+      return res.status(404).json({ message: "找不到商品" });
     }
 
     res.json(normalizeDecimalFields(result.rows[0], ["price"]));
   } catch (error) {
     if (error.code === "23505") {
-      return res.status(409).json({ message: "Product already exists" });
+      return res.status(409).json({ message: "商品名稱已存在" });
     }
     if (error.code === "23503") {
-      return res.status(400).json({ message: "Invalid category_id for current user" });
+      return res.status(400).json({ message: "分類 ID 無效或不屬於此帳號" });
     }
     console.error("PUT /products/:id error:", error.message);
-    res.status(500).json({ message: "Failed to update product", error: error.message });
+    res.status(500).json({ message: "更新商品失敗", error: error.message });
   }
 }
 
@@ -310,13 +310,16 @@ async function remove(req, res) {
     );
 
     if (!result.rows[0]) {
-      return res.status(404).json({ message: "Product not found" });
+      return res.status(404).json({ message: "找不到商品" });
     }
 
     res.status(204).send();
   } catch (error) {
     console.error("DELETE /products/:id error:", error.message);
-    res.status(500).json({ message: "Failed to delete product", error: error.message });
+    if (error.code === "23503") {
+      return res.status(409).json({ message: "此商品已加入排程，無法刪除，請改為下架" });
+    }
+    res.status(500).json({ message: "刪除商品失敗", error: error.message });
   }
 }
 

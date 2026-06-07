@@ -24,19 +24,19 @@ function normalizeScheduleStatus(value) {
 
 function normalizeScheduleItemInput(item) {
   if (!item || typeof item !== "object" || Array.isArray(item)) {
-    return { error: "each item must be an object" };
+    return { error: "每筆商品項目必須為物件格式" };
   }
 
   const productId = String(item.product_id || "").trim();
   if (!productId) {
-    return { error: "item.product_id is required" };
+    return { error: "item.product_id 為必填" };
   }
 
   let salesLimit = null;
   if (item.sales_limit != null) {
     const salesLimitNum = Number(item.sales_limit);
     if (!Number.isInteger(salesLimitNum) || salesLimitNum < 0) {
-      return { error: "item.sales_limit must be a non-negative integer when provided" };
+      return { error: "item.sales_limit 若有填寫，必須為非負整數" };
     }
     salesLimit = salesLimitNum === 0 ? null : salesLimitNum;
   }
@@ -54,16 +54,16 @@ function normalizeSchedulePayload(body = {}, { partial = false } = {}) {
 
   if (!partial || body.schedule_date != null) {
     if (!body.schedule_date) {
-      return { error: "schedule_date is required" };
+      return { error: "排程日期（schedule_date）為必填" };
     }
 
     const scheduleDate = String(body.schedule_date).trim();
     if (!/^\d{4}-\d{2}-\d{2}$/.test(scheduleDate)) {
-      return { error: "schedule_date must be YYYY-MM-DD" };
+      return { error: "schedule_date 格式必須為 YYYY-MM-DD" };
     }
     const parsedDate = new Date(`${scheduleDate}T00:00:00.000Z`);
     if (Number.isNaN(parsedDate.getTime())) {
-      return { error: "schedule_date is invalid date" };
+      return { error: "schedule_date 不是有效的日期" };
     }
     result.schedule_date = scheduleDate;
   }
@@ -71,7 +71,7 @@ function normalizeSchedulePayload(body = {}, { partial = false } = {}) {
   if (body.order_start_at != null) {
     const startAt = parseUtcDatetime(body.order_start_at);
     if (startAt.error) {
-      return { error: "order_start_at is invalid datetime" };
+      return { error: "order_start_at 不是有效的日期時間格式" };
     }
     result.order_start_at = startAt.value;
   } else if (!partial) {
@@ -81,7 +81,7 @@ function normalizeSchedulePayload(body = {}, { partial = false } = {}) {
   if (body.order_end_at != null) {
     const endAt = parseUtcDatetime(body.order_end_at);
     if (endAt.error) {
-      return { error: "order_end_at is invalid datetime" };
+      return { error: "order_end_at 不是有效的日期時間格式" };
     }
     result.order_end_at = endAt.value;
   } else if (!partial) {
@@ -90,14 +90,14 @@ function normalizeSchedulePayload(body = {}, { partial = false } = {}) {
 
   if (result.order_start_at && result.order_end_at) {
     if (new Date(result.order_start_at).getTime() >= new Date(result.order_end_at).getTime()) {
-      return { error: "order_start_at must be earlier than order_end_at" };
+      return { error: "order_start_at 必須早於 order_end_at" };
     }
   }
 
   if (body.status != null) {
     const status = normalizeScheduleStatus(body.status);
     if (!status) {
-      return { error: "status must be one of DRAFT, ANNOUNCED, OPEN, CLOSED, FULFILLED" };
+      return { error: "status 必須為 DRAFT、ANNOUNCED、OPEN、CLOSED 或 FULFILLED 其中之一" };
     }
     result.status = status;
   } else if (!partial) {
@@ -112,7 +112,7 @@ function normalizeSchedulePayload(body = {}, { partial = false } = {}) {
 
   if (body.items != null) {
     if (!Array.isArray(body.items)) {
-      return { error: "items must be an array" };
+      return { error: "items 必須為陣列" };
     }
     const normalizedItems = [];
     const productIdSet = new Set();
@@ -122,7 +122,7 @@ function normalizeSchedulePayload(body = {}, { partial = false } = {}) {
         return { error: normalized.error };
       }
       if (productIdSet.has(normalized.value.product_id)) {
-        return { error: "items cannot contain duplicated product_id" };
+        return { error: "items 中不可有重複的 product_id" };
       }
       productIdSet.add(normalized.value.product_id);
       normalizedItems.push(normalized.value);
@@ -272,7 +272,7 @@ async function list(req, res) {
     } else {
       if (month) {
         if (!/^\d{4}-\d{2}$/.test(month)) {
-          return res.status(400).json({ message: "month must be YYYY-MM" });
+          return res.status(400).json({ message: "month 參數格式必須為 YYYY-MM" });
         }
         const [yearText, monthText] = month.split("-");
         const year = Number(yearText);
@@ -304,7 +304,7 @@ async function list(req, res) {
     if (source.status && !status) {
       return res
         .status(400)
-        .json({ message: "status must be one of DRAFT, ANNOUNCED, OPEN, CLOSED, FULFILLED" });
+        .json({ message: "status 必須為 DRAFT、ANNOUNCED、OPEN、CLOSED 或 FULFILLED 其中之一" });
     }
     if (status) {
       whereClauses.push(`s.status = $${paramIndex}`);
@@ -363,7 +363,7 @@ async function list(req, res) {
     });
   } catch (error) {
     console.error("POST /schedules/list error:", error.message);
-    return res.status(500).json({ message: "Failed to list schedules", error: error.message });
+    return res.status(500).json({ message: "取得排程列表失敗", error: error.message });
   }
 }
 
@@ -371,7 +371,7 @@ async function listByMonth(req, res) {
   try {
     const month = String(req.params.month || "").trim();
     if (!/^[0-9]{4}-[0-9]{2}$/.test(month)) {
-      return res.status(400).json({ message: "month must be YYYY-MM" });
+      return res.status(400).json({ message: "month 參數格式必須為 YYYY-MM" });
     }
 
     const [yearText, monthText] = month.split("-");
@@ -388,7 +388,7 @@ async function listByMonth(req, res) {
     if (req.query.status && !status) {
       return res
         .status(400)
-        .json({ message: "status must be one of DRAFT, ANNOUNCED, OPEN, CLOSED, FULFILLED" });
+        .json({ message: "status 必須為 DRAFT、ANNOUNCED、OPEN、CLOSED 或 FULFILLED 其中之一" });
     }
     if (status) {
       whereClauses.push(`s.status = $${paramIndex}`);
@@ -418,7 +418,7 @@ async function listByMonth(req, res) {
     console.error("GET /schedules/month/:month error:", error.message);
     return res
       .status(500)
-      .json({ message: "Failed to list schedules by month", error: error.message });
+      .json({ message: "依月份取得排程失敗", error: error.message });
   }
 }
 
@@ -429,7 +429,7 @@ async function getByDate(req, res) {
     // 驗證日期格式
     const scheduleDate = req.params.date || String(req.query.date || "").trim();
     if (!scheduleDate || !/^\d{4}-\d{2}-\d{2}$/.test(scheduleDate)) {
-      return res.status(400).json({ message: "date must be YYYY-MM-DD format" });
+      return res.status(400).json({ message: "date 參數格式必須為 YYYY-MM-DD" });
     }
 
     // 查詢行程基本資料
@@ -529,7 +529,7 @@ async function getByDate(req, res) {
     });
   } catch (error) {
     console.error("GET /schedules/:date error:", error.message);
-    return res.status(500).json({ message: "Failed to fetch schedule", error: error.message });
+    return res.status(500).json({ message: "取得排程失敗", error: error.message });
   }
 }
 
@@ -541,7 +541,7 @@ async function create(req, res) {
   const payload = normalized.value;
 
   if (payload.status === "OPEN" && (!payload.order_start_at || !payload.order_end_at)) {
-    return res.status(400).json({ message: "order_start_at and order_end_at are required when status is OPEN" });
+    return res.status(400).json({ message: "狀態為 OPEN 時，order_start_at 與 order_end_at 為必填" });
   }
 
   const client = await pool.connect();
@@ -571,23 +571,23 @@ async function create(req, res) {
   } catch (error) {
     await client.query("ROLLBACK");
     if (error.code === "23505") {
-      return res.status(409).json({ message: "A schedule already exists on this date" });
+      return res.status(409).json({ message: "此日期已有排程存在" });
     }
     if (error.code === "23514" || error.code === "22007") {
-      return res.status(400).json({ message: "Invalid date or ordering time range" });
+      return res.status(400).json({ message: "日期或接單時間範圍無效" });
     }
     if (error.message === "SOME_PRODUCTS_NOT_FOUND") {
-      return res.status(400).json({ message: "Some products are invalid or inactive" });
+      return res.status(400).json({ message: "部分商品無效或已下架" });
     }
     if (error.message && error.message.startsWith("SCHEDULE_ITEM_LOCKED")) {
       const names = error.message.split(":").slice(1).join(":");
       return res.status(409).json({
-        message: "Cannot remove or change schedule items that already have orders",
+        message: "已有訂單的排程商品無法移除或修改",
         locked_items: names ? names.split(", ").filter(Boolean) : [],
       });
     }
     console.error("POST /schedules error:", error.message);
-    return res.status(500).json({ message: "Failed to create schedule", error: error.message });
+    return res.status(500).json({ message: "建立排程失敗", error: error.message });
   } finally {
     client.release();
   }
@@ -654,7 +654,7 @@ async function update(req, res) {
 
     if (!schedule) {
       await client.query("ROLLBACK");
-      return res.status(404).json({ message: "Schedule not found" });
+      return res.status(404).json({ message: "找不到排程" });
     }
 
     if (payload.items != null) {
@@ -667,23 +667,23 @@ async function update(req, res) {
   } catch (error) {
     await client.query("ROLLBACK");
     if (error.code === "23505") {
-      return res.status(409).json({ message: "A schedule already exists on this date" });
+      return res.status(409).json({ message: "此日期已有排程存在" });
     }
     if (error.code === "23514" || error.code === "22007") {
-      return res.status(400).json({ message: "Invalid date or ordering time range" });
+      return res.status(400).json({ message: "日期或接單時間範圍無效" });
     }
     if (error.message === "SOME_PRODUCTS_NOT_FOUND") {
-      return res.status(400).json({ message: "Some products are invalid or inactive" });
+      return res.status(400).json({ message: "部分商品無效或已下架" });
     }
     if (error.message && error.message.startsWith("SCHEDULE_ITEM_LOCKED")) {
       const names = error.message.split(":").slice(1).join(":");
       return res.status(409).json({
-        message: "Cannot remove or change schedule items that already have orders",
+        message: "已有訂單的排程商品無法移除或修改",
         locked_items: names ? names.split(", ").filter(Boolean) : [],
       });
     }
     console.error("PUT /schedules/:id error:", error.message);
-    return res.status(500).json({ message: "Failed to update schedule", error: error.message });
+    return res.status(500).json({ message: "更新排程失敗", error: error.message });
   } finally {
     client.release();
   }
@@ -699,16 +699,16 @@ async function remove(req, res) {
     );
 
     if (!result.rows[0]) {
-      return res.status(404).json({ message: "Schedule not found" });
+      return res.status(404).json({ message: "找不到排程" });
     }
 
     return res.status(204).send();
   } catch (error) {
     if (error.code === "23503") {
-      return res.status(409).json({ message: "Schedule already has orders and cannot be deleted" });
+      return res.status(409).json({ message: "此排程已有訂單，無法刪除" });
     }
     console.error("DELETE /schedules/:id error:", error.message);
-    return res.status(500).json({ message: "Failed to delete schedule", error: error.message });
+    return res.status(500).json({ message: "刪除排程失敗", error: error.message });
   }
 }
 

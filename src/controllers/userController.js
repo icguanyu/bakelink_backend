@@ -12,11 +12,11 @@ function normalizeNullableString(value) {
 
 function normalizeStringArray(value, fieldName) {
   if (!Array.isArray(value)) {
-    return { error: `${fieldName} must be an array of strings` };
+    return { error: `${fieldName} 必須為字串陣列` };
   }
   const items = value.map((item) => String(item || "").trim());
   if (items.some((item) => !item)) {
-    return { error: `${fieldName} cannot contain empty values` };
+    return { error: `${fieldName} 不可包含空字串` };
   }
   return { value: items };
 }
@@ -27,7 +27,7 @@ function normalizeNullableNumber(value, fieldName) {
   }
   const num = Number(value);
   if (!Number.isFinite(num) || num < 0) {
-    return { error: `${fieldName} must be a non-negative number` };
+    return { error: `${fieldName} 必須為非負數` };
   }
   return { value: num };
 }
@@ -37,31 +37,31 @@ function normalizeBusinessHours(value) {
     return { value: null };
   }
   if (!Array.isArray(value)) {
-    return { error: "businessHours must be an array" };
+    return { error: "businessHours 必須為陣列" };
   }
 
   const normalized = value.map((item) => {
     if (!item || typeof item !== "object" || Array.isArray(item)) {
-      return { __invalid: "businessHours item must be an object" };
+      return { __invalid: "businessHours 的每個項目必須為物件" };
     }
     const dayValue = Number(item.day);
     if (!Number.isInteger(dayValue) || dayValue < 0 || dayValue > 6) {
-      return { __invalid: "businessHours.day must be an integer between 0 and 6" };
+      return { __invalid: "businessHours.day 必須為 0 到 6 之間的整數" };
     }
     if (typeof item.enabled !== "boolean") {
-      return { __invalid: "businessHours.enabled must be boolean" };
+      return { __invalid: "businessHours.enabled 必須為布林值" };
     }
     if (!Array.isArray(item.time) || item.time.length !== 2) {
-      return { __invalid: "businessHours.time must be [start, end]" };
+      return { __invalid: "businessHours.time 必須包含開始與結束時間" };
     }
     const [start, end] = item.time;
     const startText = String(start || "").trim();
     const endText = String(end || "").trim();
     if (!/^([01]?\d|2[0-3]):[0-5]\d$/.test(startText)) {
-      return { __invalid: "businessHours.time start must be HH:mm" };
+      return { __invalid: "businessHours.time 的開始時間格式必須為 HH:mm" };
     }
     if (!/^([01]?\d|2[0-3]):[0-5]\d$/.test(endText)) {
-      return { __invalid: "businessHours.time end must be HH:mm" };
+      return { __invalid: "businessHours.time 的結束時間格式必須為 HH:mm" };
     }
     return {
       day: dayValue,
@@ -87,7 +87,7 @@ function normalizeUserSettingsPayload(body = {}, { partial = false } = {}) {
     } else {
       const slug = String(body.shopSlug).trim().toLowerCase();
       if (!/^[a-z0-9-]{3,50}$/.test(slug)) {
-        return { error: "shopSlug must be 3-50 characters, letters/numbers/hyphens only" };
+        return { error: "shopSlug 必須為 3 到 50 個字元，僅允許英文小寫字母、數字與連字號" };
       }
       result.shop_slug = slug;
     }
@@ -110,7 +110,7 @@ function normalizeUserSettingsPayload(body = {}, { partial = false } = {}) {
   if (!partial || body.email != null) {
     const email = String(body.email || "").trim().toLowerCase();
     if (!email) {
-      return { error: "email is required" };
+      return { error: "Email 為必填" };
     }
     result.email = email;
   }
@@ -125,7 +125,7 @@ function normalizeUserSettingsPayload(body = {}, { partial = false } = {}) {
     if (!raw) {
       result.order_pickup_time = null;
     } else if (!/^([01]?\d|2[0-3]):[0-5]\d$/.test(raw)) {
-      return { error: "orderPickupTime must be HH:mm" };
+      return { error: "orderPickupTime 格式必須為 HH:mm" };
     } else {
       result.order_pickup_time = raw;
     }
@@ -151,7 +151,7 @@ function normalizeUserSettingsPayload(body = {}, { partial = false } = {}) {
       result.shipping_fee = null;
       result.shipping_note = null;
     } else if (!body.shipping || typeof body.shipping !== "object" || Array.isArray(body.shipping)) {
-      return { error: "shipping must be an object" };
+      return { error: "shipping 必須為物件" };
     } else {
       if (Object.prototype.hasOwnProperty.call(body.shipping, "freeThreshold")) {
         const normalized = normalizeNullableNumber(
@@ -187,7 +187,7 @@ function normalizeUserSettingsPayload(body = {}, { partial = false } = {}) {
       typeof body.packaging !== "object" ||
       Array.isArray(body.packaging)
     ) {
-      return { error: "packaging must be an object" };
+      return { error: "packaging 必須為物件" };
     } else {
       if (Object.prototype.hasOwnProperty.call(body.packaging, "defaultPack")) {
         result.packaging_default_pack = normalizeNullableString(body.packaging.defaultPack);
@@ -291,7 +291,7 @@ async function list(req, res) {
   } catch (error) {
     console.error("GET /users error:", error.message);
     res.status(500).json({
-      message: "Failed to fetch users",
+      message: "取得使用者列表失敗",
       error: error.message,
     });
   }
@@ -312,13 +312,13 @@ async function getMe(req, res) {
     );
 
     if (!result.rows[0]) {
-      return res.status(404).json({ message: "User not found" });
+      return res.status(404).json({ message: "找不到使用者" });
     }
 
     res.json(mapUserSettingsRow(result.rows[0]));
   } catch (error) {
     console.error("GET /users/me error:", error.message);
-    res.status(500).json({ message: "Failed to fetch user settings", error: error.message });
+    res.status(500).json({ message: "取得使用者設定失敗", error: error.message });
   }
 }
 
@@ -442,16 +442,16 @@ async function updateMe(req, res) {
     }
 
     if (!result.rows[0]) {
-      return res.status(404).json({ message: "User not found" });
+      return res.status(404).json({ message: "找不到使用者" });
     }
 
     res.json(mapUserSettingsRow(result.rows[0]));
   } catch (error) {
     if (error.code === "23505") {
-      return res.status(409).json({ message: "Email already exists" });
+      return res.status(409).json({ message: "此 Email 已被使用" });
     }
     console.error("PUT /users/me error:", error.message);
-    res.status(500).json({ message: "Failed to update user settings", error: error.message });
+    res.status(500).json({ message: "更新使用者設定失敗", error: error.message });
   }
 }
 

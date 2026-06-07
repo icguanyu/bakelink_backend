@@ -29,7 +29,7 @@ function normalizeBooleanField(value, fieldName, { defaultValue, allowMissing = 
     return { value: defaultValue };
   }
   if (typeof value !== "boolean") {
-    return { error: `${fieldName} must be a boolean` };
+    return { error: `${fieldName} 必須為布林值（true/false）` };
   }
   return { value };
 }
@@ -48,24 +48,24 @@ function normalizePickupMethod(value, { defaultValue = "PICKUP", allowMissing = 
     PICKUP: "PICKUP",
     SELF_PICKUP: "PICKUP",
     DELIVERY: "DELIVERY",
-    "\u81ea\u53d6": "PICKUP",
-    "\u5b85\u914d": "DELIVERY",
+    "自取": "PICKUP",
+    "宅配": "DELIVERY",
   };
   const method = aliasMap[normalized] || aliasMap[raw];
   if (!method || !PICKUP_METHODS.has(method)) {
-    return { error: "pickup_method must be PICKUP or DELIVERY" };
+    return { error: "pickup_method 必須為 PICKUP 或 DELIVERY" };
   }
   return { value: method };
 }
 
 function normalizeOrderItemInput(item) {
   if (!item || typeof item !== "object" || Array.isArray(item)) {
-    return { error: "each item must be an object" };
+    return { error: "每筆商品項目必須為物件格式" };
   }
 
   const quantity = Number(item.quantity);
   if (!Number.isInteger(quantity) || quantity <= 0) {
-    return { error: "item.quantity must be a positive integer" };
+    return { error: "item.quantity 必須為正整數" };
   }
 
   const scheduleItemId = item.schedule_item_id
@@ -73,7 +73,7 @@ function normalizeOrderItemInput(item) {
     : "";
   const productId = item.product_id ? String(item.product_id).trim() : "";
   if (!scheduleItemId && !productId) {
-    return { error: "item.schedule_item_id or item.product_id is required" };
+    return { error: "item.schedule_item_id 或 item.product_id 為必填" };
   }
   const isSliced = normalizeBooleanField(item.is_sliced, "item.is_sliced", {
     defaultValue: false,
@@ -160,30 +160,29 @@ function normalizeCreateOrderPayload(body = {}) {
   }
 
   if (!scheduleId) {
-    return { error: "schedule_id is required" };
+    return { error: "schedule_id 為必填" };
   }
   if (!customerName) {
-    return { error: "customer_name is required" };
+    return { error: "顧客姓名（customer_name）為必填" };
   }
   if (!customerPhone) {
-    return { error: "customer_phone is required" };
+    return { error: "顧客電話（customer_phone）為必填" };
   }
   if (!paymentMethod) {
-    return { error: "payment_method is required" };
+    return { error: "付款方式（payment_method）為必填" };
   }
   const pickupTime = String(body.pickup_time || "").trim();
   if (!pickupTime) {
-    return { error: "pickup_time is required" };
+    return { error: "取件時間（pickup_time）為必填" };
   }
 
-  // 驗證 HH:mm 格式 (例如 "09:30", "14:00")
   const timePattern = /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/;
   if (!timePattern.test(pickupTime)) {
-    return { error: "pickup_time must be in HH:mm format (e.g., 12:00)" };
+    return { error: "pickup_time 格式必須為 HH:mm（例如：12:00）" };
   }
 
   if (!Array.isArray(body.items) || body.items.length === 0) {
-    return { error: "items is required and must not be empty" };
+    return { error: "訂單商品（items）為必填且不可為空" };
   }
 
   const items = [];
@@ -231,26 +230,26 @@ function normalizeUpdateOrderPayload(body = {}) {
   }
 
   if (!customerName) {
-    return { error: "customer_name is required" };
+    return { error: "顧客姓名（customer_name）為必填" };
   }
   if (!customerPhone) {
-    return { error: "customer_phone is required" };
+    return { error: "顧客電話（customer_phone）為必填" };
   }
   if (!paymentMethod) {
-    return { error: "payment_method is required" };
+    return { error: "付款方式（payment_method）為必填" };
   }
   const pickupTime = String(body.pickup_time || "").trim();
   if (!pickupTime) {
-    return { error: "pickup_time is required" };
+    return { error: "取件時間（pickup_time）為必填" };
   }
 
   const timePattern = /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/;
   if (!timePattern.test(pickupTime)) {
-    return { error: "pickup_time must be in HH:mm format (e.g., 12:00)" };
+    return { error: "pickup_time 格式必須為 HH:mm（例如：12:00）" };
   }
 
   if (!Array.isArray(body.items) || body.items.length === 0) {
-    return { error: "items is required and must not be empty" };
+    return { error: "訂單商品（items）為必填且不可為空" };
   }
 
   const items = [];
@@ -295,7 +294,7 @@ async function list(req, res) {
 
     const status = source.status ? normalizeOrderStatus(source.status) : null;
     if (source.status && !status) {
-      return res.status(400).json({ message: "status must be one of PLACED, COMPLETED, CANCELLED" });
+      return res.status(400).json({ message: "status 必須為 PLACED、COMPLETED 或 CANCELLED 其中之一" });
     }
     if (status) {
       whereClauses.push(`o.status = $${paramIndex}`);
@@ -363,7 +362,7 @@ async function list(req, res) {
     });
   } catch (error) {
     console.error("POST /orders/list error:", error.message);
-    return res.status(500).json({ message: "Failed to list orders", error: error.message });
+    return res.status(500).json({ message: "取得訂單列表失敗", error: error.message });
   }
 }
 
@@ -380,7 +379,7 @@ async function getById(req, res) {
     );
 
     if (!orderResult.rows[0]) {
-      return res.status(404).json({ message: "Order not found" });
+      return res.status(404).json({ message: "找不到訂單" });
     }
 
     const itemResult = await pool.query(
@@ -400,7 +399,7 @@ async function getById(req, res) {
     });
   } catch (error) {
     console.error("GET /orders/:id error:", error.message);
-    return res.status(500).json({ message: "Failed to fetch order", error: error.message });
+    return res.status(500).json({ message: "取得訂單失敗", error: error.message });
   }
 }
 
@@ -425,17 +424,17 @@ async function create(req, res) {
     const schedule = scheduleResult.rows[0];
     if (!schedule) {
       await client.query("ROLLBACK");
-      return res.status(404).json({ message: "Schedule not found" });
+      return res.status(404).json({ message: "找不到排程" });
     }
     if (schedule.status !== "OPEN") {
       await client.query("ROLLBACK");
-      return res.status(409).json({ message: "Orders can only be created when schedule status is OPEN" });
+      return res.status(409).json({ message: "只有排程狀態為 OPEN 時才能建立訂單" });
     }
 
     const orderDate = String(schedule.schedule_date || "").replace(/-/g, "");
     if (!/^\d{8}$/.test(orderDate)) {
       await client.query("ROLLBACK");
-      return res.status(400).json({ message: "Invalid schedule date for order number generation" });
+      return res.status(400).json({ message: "排程日期無效，無法產生訂單編號" });
     }
     const orderNoPhonePart = getOrderNoPhonePart(payload.customer_phone);
 
@@ -549,13 +548,13 @@ async function create(req, res) {
   } catch (error) {
     await client.query("ROLLBACK");
     if (error.message === "SCHEDULE_ITEM_NOT_FOUND") {
-      return res.status(400).json({ message: "Some order items are not in schedule" });
+      return res.status(400).json({ message: "部分訂單商品不在此排程中" });
     }
     if (error.message === "SALES_LIMIT_EXCEEDED") {
-      return res.status(409).json({ message: "Sales limit exceeded for one or more items" });
+      return res.status(409).json({ message: "一或多項商品已超過銷售數量上限" });
     }
     console.error("POST /orders error:", error.message);
-    return res.status(500).json({ message: "Failed to create order", error: error.message });
+    return res.status(500).json({ message: "建立訂單失敗", error: error.message });
   } finally {
     client.release();
   }
@@ -582,11 +581,11 @@ async function update(req, res) {
     const order = orderResult.rows[0];
     if (!order) {
       await client.query("ROLLBACK");
-      return res.status(404).json({ message: "Order not found" });
+      return res.status(404).json({ message: "找不到訂單" });
     }
     if (order.status !== "PLACED") {
       await client.query("ROLLBACK");
-      return res.status(409).json({ message: "Only PLACED orders can be edited" });
+      return res.status(409).json({ message: "只有狀態為 PLACED 的訂單才能修改" });
     }
 
     const scheduleResult = await client.query(
@@ -599,11 +598,11 @@ async function update(req, res) {
     const schedule = scheduleResult.rows[0];
     if (!schedule) {
       await client.query("ROLLBACK");
-      return res.status(404).json({ message: "Schedule not found" });
+      return res.status(404).json({ message: "找不到排程" });
     }
     if (schedule.status !== "OPEN") {
       await client.query("ROLLBACK");
-      return res.status(409).json({ message: "Orders can only be edited when schedule status is OPEN" });
+      return res.status(409).json({ message: "只有排程狀態為 OPEN 時才能修改訂單" });
     }
 
     await client.query(`DELETE FROM order_items WHERE order_id = $1`, [order.id]);
@@ -699,13 +698,13 @@ async function update(req, res) {
   } catch (error) {
     await client.query("ROLLBACK");
     if (error.message === "SCHEDULE_ITEM_NOT_FOUND") {
-      return res.status(400).json({ message: "Some order items are not in schedule" });
+      return res.status(400).json({ message: "部分訂單商品不在此排程中" });
     }
     if (error.message === "SALES_LIMIT_EXCEEDED") {
-      return res.status(409).json({ message: "Sales limit exceeded for one or more items" });
+      return res.status(409).json({ message: "一或多項商品已超過銷售數量上限" });
     }
     console.error("PUT /orders/:id error:", error.message);
-    return res.status(500).json({ message: "Failed to update order", error: error.message });
+    return res.status(500).json({ message: "更新訂單失敗", error: error.message });
   } finally {
     client.release();
   }
@@ -714,7 +713,7 @@ async function update(req, res) {
 async function updateStatus(req, res) {
   const status = normalizeOrderStatus(req.body?.status);
   if (!status) {
-    return res.status(400).json({ message: "status must be one of PLACED, COMPLETED, CANCELLED" });
+    return res.status(400).json({ message: "status 必須為 PLACED、COMPLETED 或 CANCELLED 其中之一" });
   }
 
   try {
@@ -727,13 +726,13 @@ async function updateStatus(req, res) {
       [status, req.params.id, req.user.sub],
     );
     if (!result.rows[0]) {
-      return res.status(404).json({ message: "Order not found" });
+      return res.status(404).json({ message: "找不到訂單" });
     }
     const timeZone = resolveTimeZone(req);
     return res.json(formatOrderRow(result.rows[0], timeZone));
   } catch (error) {
     console.error("PUT /orders/:id/status error:", error.message);
-    return res.status(500).json({ message: "Failed to update order status", error: error.message });
+    return res.status(500).json({ message: "更新訂單狀態失敗", error: error.message });
   }
 }
 
@@ -746,12 +745,12 @@ async function remove(req, res) {
       [req.params.id, req.user.sub],
     );
     if (!result.rows[0]) {
-      return res.status(404).json({ message: "Order not found" });
+      return res.status(404).json({ message: "找不到訂單" });
     }
     return res.status(204).send();
   } catch (error) {
     console.error("DELETE /orders/:id error:", error.message);
-    return res.status(500).json({ message: "Failed to delete order", error: error.message });
+    return res.status(500).json({ message: "刪除訂單失敗", error: error.message });
   }
 }
 

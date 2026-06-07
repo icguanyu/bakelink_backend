@@ -34,13 +34,13 @@ async function register(req, res) {
 
   if (!name || !email || !password) {
     return res.status(400).json({
-      message: "name, email, and password are required",
+      message: "姓名、Email 及密碼為必填",
     });
   }
 
   if (String(password).length < 8) {
     return res.status(400).json({
-      message: "password must be at least 8 characters",
+      message: "密碼長度至少需要 8 個字元",
     });
   }
 
@@ -68,10 +68,10 @@ async function register(req, res) {
   } catch (error) {
     await client.query("ROLLBACK");
     if (error.code === "23505") {
-      return res.status(409).json({ message: "Email already exists" });
+      return res.status(409).json({ message: "此 Email 已被註冊" });
     }
     console.error("POST /auth/register error:", error.message);
-    res.status(500).json({ message: "Failed to register user", error: error.message });
+    res.status(500).json({ message: "註冊失敗", error: error.message });
   } finally {
     client.release();
   }
@@ -82,7 +82,7 @@ async function login(req, res) {
   if (!email || !password) {
     return res
       .status(400)
-      .json({ message: "email and password are required" });
+      .json({ message: "Email 及密碼為必填" });
   }
 
   try {
@@ -95,7 +95,7 @@ async function login(req, res) {
 
     const user = result.rows[0];
     if (!user || !user.password_hash) {
-      return res.status(401).json({ message: "Invalid email or password" });
+      return res.status(401).json({ message: "Email 或密碼錯誤" });
     }
 
     const isValidPassword = await bcrypt.compare(
@@ -104,7 +104,7 @@ async function login(req, res) {
     );
 
     if (!isValidPassword) {
-      return res.status(401).json({ message: "Invalid email or password" });
+      return res.status(401).json({ message: "Email 或密碼錯誤" });
     }
 
     const token = jwt.sign(
@@ -126,7 +126,7 @@ async function login(req, res) {
     });
   } catch (error) {
     console.error("POST /auth/login error:", error.message);
-    res.status(500).json({ message: "Failed to login", error: error.message });
+    res.status(500).json({ message: "登入失敗", error: error.message });
   }
 }
 
@@ -140,7 +140,7 @@ async function me(req, res) {
     );
 
     if (!result.rows[0]) {
-      return res.status(404).json({ message: "User not found" });
+      return res.status(404).json({ message: "找不到使用者" });
     }
 
     res.json(result.rows[0]);
@@ -148,7 +148,7 @@ async function me(req, res) {
     console.error("GET /auth/me error:", error.message);
     res
       .status(500)
-      .json({ message: "Failed to fetch user profile", error: error.message });
+      .json({ message: "取得使用者資料失敗", error: error.message });
   }
 }
 
