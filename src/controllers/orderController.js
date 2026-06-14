@@ -330,7 +330,9 @@ async function list(req, res) {
       total = countResult.rows[0]?.total || 0;
 
       result = await pool.query(
-        `SELECT o.id, o.order_no, o.schedule_id, s.schedule_date::text AS schedule_date, o.status, o.customer_name, o.customer_phone,
+        `SELECT o.id, o.order_no, o.schedule_id, s.schedule_date::text AS schedule_date,
+                s.venue_name, s.venue_address, TO_CHAR(s.venue_start, 'HH24:MI') AS venue_start, TO_CHAR(s.venue_end, 'HH24:MI') AS venue_end,
+                o.status, o.customer_name, o.customer_phone,
                 o.customer_address,
                 o.pickup_time, o.note, o.payment_method, o.bring_own_bag, o.pickup_method, o.total_amount
          FROM orders o
@@ -342,7 +344,9 @@ async function list(req, res) {
       );
     } else {
       result = await pool.query(
-        `SELECT o.id, o.order_no, o.schedule_id, s.schedule_date::text AS schedule_date, o.status, o.customer_name, o.customer_phone,
+        `SELECT o.id, o.order_no, o.schedule_id, s.schedule_date::text AS schedule_date,
+                s.venue_name, s.venue_address, TO_CHAR(s.venue_start, 'HH24:MI') AS venue_start, TO_CHAR(s.venue_end, 'HH24:MI') AS venue_end,
+                o.status, o.customer_name, o.customer_phone,
                 o.customer_address,
                 o.pickup_time, o.note, o.payment_method, o.bring_own_bag, o.pickup_method, o.total_amount
          FROM orders o
@@ -369,7 +373,9 @@ async function list(req, res) {
 async function getById(req, res) {
   try {
     const orderResult = await pool.query(
-      `SELECT o.id, o.order_no, o.user_id, o.schedule_id, s.schedule_date::text AS schedule_date, o.status, o.customer_name, o.customer_phone,
+      `SELECT o.id, o.order_no, o.user_id, o.schedule_id, s.schedule_date::text AS schedule_date,
+              s.venue_name, s.venue_address, TO_CHAR(s.venue_start, 'HH24:MI') AS venue_start, TO_CHAR(s.venue_end, 'HH24:MI') AS venue_end,
+              o.status, o.customer_name, o.customer_phone,
               o.customer_address,
               o.pickup_time, o.note, o.payment_method, o.bring_own_bag, o.pickup_method, o.total_amount
        FROM orders o

@@ -366,6 +366,7 @@ async function list(req, res) {
       result = await pool.query(
         `SELECT s.id, s.schedule_date::text AS schedule_date, s.status, s.order_start_at, s.order_end_at, s.note,
                 s.venue_name, s.venue_address, TO_CHAR(s.venue_start, 'HH24:MI') AS venue_start, TO_CHAR(s.venue_end, 'HH24:MI') AS venue_end,
+                (s.venue_name IS NOT NULL) AS is_venue,
                 COUNT(DISTINCT si.id)::int AS item_count,
                 COUNT(DISTINCT o.id)::int AS order_count
          FROM schedules s
@@ -381,6 +382,7 @@ async function list(req, res) {
       result = await pool.query(
         `SELECT s.id, s.schedule_date::text AS schedule_date, s.status, s.order_start_at, s.order_end_at, s.note,
                 s.venue_name, s.venue_address, TO_CHAR(s.venue_start, 'HH24:MI') AS venue_start, TO_CHAR(s.venue_end, 'HH24:MI') AS venue_end,
+                (s.venue_name IS NOT NULL) AS is_venue,
                 COUNT(DISTINCT si.id)::int AS item_count,
                 COUNT(DISTINCT o.id)::int AS order_count
          FROM schedules s
@@ -440,6 +442,8 @@ async function listByMonth(req, res) {
 
     const result = await pool.query(
       `SELECT s.id, s.schedule_date::text AS schedule_date, s.status, s.order_start_at, s.order_end_at, s.note,
+              s.venue_name, s.venue_address, TO_CHAR(s.venue_start, 'HH24:MI') AS venue_start, TO_CHAR(s.venue_end, 'HH24:MI') AS venue_end,
+              (s.venue_name IS NOT NULL) AS is_venue,
               COUNT(DISTINCT si.id)::int AS item_count,
               COUNT(DISTINCT o.id)::int AS order_count
        FROM schedules s
@@ -476,6 +480,7 @@ async function getByDate(req, res) {
     const scheduleResult = await pool.query(
       `SELECT s.id, s.user_id, s.schedule_date::text AS schedule_date, s.status, s.order_start_at, s.order_end_at, s.note,
               s.venue_name, s.venue_address, TO_CHAR(s.venue_start, 'HH24:MI') AS venue_start, TO_CHAR(s.venue_end, 'HH24:MI') AS venue_end,
+              (s.venue_name IS NOT NULL) AS is_venue,
               (SELECT COUNT(*)::int FROM schedule_items si WHERE si.schedule_id = s.id) AS item_count,
               (SELECT COUNT(*)::int FROM orders o WHERE o.schedule_id = s.id) AS order_count
        FROM schedules s
@@ -596,7 +601,8 @@ async function create(req, res) {
       `INSERT INTO schedules (user_id, schedule_date, status, order_start_at, order_end_at, note, venue_name, venue_address, venue_start, venue_end)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
        RETURNING id, user_id, schedule_date::text AS schedule_date, status, order_start_at, order_end_at, note,
-                 venue_name, venue_address, TO_CHAR(venue_start, 'HH24:MI') AS venue_start, TO_CHAR(venue_end, 'HH24:MI') AS venue_end`,
+                 venue_name, venue_address, TO_CHAR(venue_start, 'HH24:MI') AS venue_start, TO_CHAR(venue_end, 'HH24:MI') AS venue_end,
+                 (venue_name IS NOT NULL) AS is_venue`,
       [
         req.user.sub,
         payload.schedule_date,
@@ -701,14 +707,16 @@ async function update(req, res) {
          SET ${editableFields.join(", ")}
          WHERE id = $${paramIndex} AND user_id = $${paramIndex + 1}
          RETURNING id, user_id, schedule_date::text AS schedule_date, status, order_start_at, order_end_at, note,
-                   venue_name, venue_address, TO_CHAR(venue_start, 'HH24:MI') AS venue_start, TO_CHAR(venue_end, 'HH24:MI') AS venue_end`,
+                   venue_name, venue_address, TO_CHAR(venue_start, 'HH24:MI') AS venue_start, TO_CHAR(venue_end, 'HH24:MI') AS venue_end,
+                 (venue_name IS NOT NULL) AS is_venue`,
         [...values, req.params.id, req.user.sub],
       );
       schedule = updateResult.rows[0];
     } else {
       const currentResult = await client.query(
       `SELECT id, user_id, schedule_date::text AS schedule_date, status, order_start_at, order_end_at, note,
-              venue_name, venue_address, TO_CHAR(venue_start, 'HH24:MI') AS venue_start, TO_CHAR(venue_end, 'HH24:MI') AS venue_end
+              venue_name, venue_address, TO_CHAR(venue_start, 'HH24:MI') AS venue_start, TO_CHAR(venue_end, 'HH24:MI') AS venue_end,
+              (venue_name IS NOT NULL) AS is_venue
          FROM schedules
          WHERE id = $1 AND user_id = $2`,
         [req.params.id, req.user.sub],
@@ -755,6 +763,7 @@ async function getById(req, res) {
     const scheduleResult = await pool.query(
       `SELECT s.id, s.user_id, s.schedule_date::text AS schedule_date, s.status, s.order_start_at, s.order_end_at, s.note,
               s.venue_name, s.venue_address, TO_CHAR(s.venue_start, 'HH24:MI') AS venue_start, TO_CHAR(s.venue_end, 'HH24:MI') AS venue_end,
+              (s.venue_name IS NOT NULL) AS is_venue,
               (SELECT COUNT(*)::int FROM schedule_items si WHERE si.schedule_id = s.id) AS item_count,
               (SELECT COUNT(*)::int FROM orders o WHERE o.schedule_id = s.id) AS order_count
        FROM schedules s

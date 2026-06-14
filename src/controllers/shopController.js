@@ -120,7 +120,8 @@ async function listSchedules(req, res) {
     const result = await pool.query(
       `SELECT id, schedule_date::text AS schedule_date, status, note,
               order_start_at, order_end_at,
-              venue_name, venue_address, TO_CHAR(venue_start, 'HH24:MI') AS venue_start, TO_CHAR(venue_end, 'HH24:MI') AS venue_end
+              venue_name, venue_address, TO_CHAR(venue_start, 'HH24:MI') AS venue_start, TO_CHAR(venue_end, 'HH24:MI') AS venue_end,
+              (venue_name IS NOT NULL) AS is_venue
        FROM schedules
        WHERE ${whereClauses.join(" AND ")}
        ORDER BY schedule_date ASC`,
@@ -195,7 +196,8 @@ async function getScheduleByDate(req, res) {
     const scheduleResult = await pool.query(
       `SELECT id, schedule_date::text AS schedule_date, status, note,
               order_start_at, order_end_at,
-              venue_name, venue_address, TO_CHAR(venue_start, 'HH24:MI') AS venue_start, TO_CHAR(venue_end, 'HH24:MI') AS venue_end
+              venue_name, venue_address, TO_CHAR(venue_start, 'HH24:MI') AS venue_start, TO_CHAR(venue_end, 'HH24:MI') AS venue_end,
+              (venue_name IS NOT NULL) AS is_venue
        FROM schedules
        WHERE user_id = $1
          AND schedule_date = $2::date
@@ -558,7 +560,8 @@ async function listOrdersByPhone(req, res) {
       `SELECT o.id, o.order_no, o.status, o.customer_name, o.customer_phone,
               o.customer_address, o.pickup_time, o.pickup_method, o.bring_own_bag,
               o.note, o.payment_method, o.total_amount,
-              s.schedule_date::text AS schedule_date
+              s.schedule_date::text AS schedule_date,
+              s.venue_name, s.venue_address, TO_CHAR(s.venue_start, 'HH24:MI') AS venue_start, TO_CHAR(s.venue_end, 'HH24:MI') AS venue_end
        FROM orders o
        JOIN schedules s ON s.id = o.schedule_id
        WHERE o.user_id = $1
@@ -627,7 +630,8 @@ async function getOrderByNo(req, res) {
       `SELECT o.id, o.order_no, o.status, o.customer_name, o.customer_phone,
               o.customer_address, o.pickup_time, o.pickup_method, o.bring_own_bag,
               o.note, o.payment_method, o.total_amount,
-              s.schedule_date::text AS schedule_date
+              s.schedule_date::text AS schedule_date,
+              s.venue_name, s.venue_address, TO_CHAR(s.venue_start, 'HH24:MI') AS venue_start, TO_CHAR(s.venue_end, 'HH24:MI') AS venue_end
        FROM orders o
        JOIN schedules s ON s.id = o.schedule_id
        WHERE o.user_id = $1
