@@ -456,6 +456,7 @@ async function getByDate(req, res) {
               si.sales_limit,
               COALESCE(sold.ordered_quantity, 0)::int AS ordered_quantity,
               p.is_sliceable,
+              p.slice_price,
               p.image_urls,
               CASE WHEN array_length(p.image_urls, 1) > 0 THEN p.image_urls[1] ELSE NULL END AS image_url
        FROM schedule_items si
@@ -472,7 +473,7 @@ async function getByDate(req, res) {
       [scheduleId],
     );
     const scheduleItems = itemsResult.rows.map((item) =>
-      normalizeDecimalFields(item, ["unit_price"]),
+      normalizeDecimalFields(item, ["unit_price", "slice_price"]),
     );
 
     const ordersResult = await pool.query(
