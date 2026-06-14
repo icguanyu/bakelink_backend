@@ -4,6 +4,7 @@ const {
   list,
   listByMonth,
   getByDate,
+  getById,
   create,
   update,
   remove,
@@ -12,6 +13,7 @@ const { authRequired } = require("../middleware/auth");
 
 router.get("/month/:month", authRequired, listByMonth);
 router.post("/list", authRequired, list);
+router.get("/detail/:id", authRequired, getById);
 router.get("/:date", authRequired, getByDate);
 router.post("/", authRequired, create);
 router.put("/:id", authRequired, update);

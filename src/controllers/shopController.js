@@ -193,11 +193,14 @@ async function getScheduleByDate(req, res) {
 
     const scheduleResult = await pool.query(
       `SELECT id, schedule_date::text AS schedule_date, status, note,
-              order_start_at, order_end_at
+              order_start_at, order_end_at,
+              venue_name, venue_address, TO_CHAR(venue_start, 'HH24:MI') AS venue_start, TO_CHAR(venue_end, 'HH24:MI') AS venue_end
        FROM schedules
        WHERE user_id = $1
          AND schedule_date = $2::date
-         AND status = ANY('{ANNOUNCED,OPEN,CLOSED}')`,
+         AND status = ANY('{ANNOUNCED,OPEN,CLOSED}')
+       ORDER BY id ASC
+       LIMIT 1`,
       [userId, date],
     );
     const schedule = scheduleResult.rows[0];

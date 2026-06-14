@@ -259,41 +259,67 @@
       },
       ScheduleBody: {
         type: "object",
-        required: ["schedule_date", "order_start_at", "order_end_at"],
+        required: ["schedule_date"],
         properties: {
           schedule_date: {
             type: "string",
             format: "date",
-            description: "接單排程日期（每位商家每天僅可一張）",
-            example: "2026-02-17",
+            description: "排程日期（同一天可建立多場巡迴）",
+            example: "2026-06-14",
           },
           status: {
             type: "string",
             enum: ["DRAFT", "ANNOUNCED", "OPEN", "CLOSED", "FULFILLED"],
-            description: "接單排程狀態",
+            description: "排程狀態",
             example: "DRAFT",
           },
           order_start_at: {
             type: "string",
             format: "date-time",
-            description: "開單開始時間",
-            example: "2026-02-17T00:00:00.000Z",
+            nullable: true,
+            description: "開單開始時間（選填）",
+            example: "2026-06-14T00:00:00.000Z",
           },
           order_end_at: {
             type: "string",
             format: "date-time",
-            description: "收單截止時間",
-            example: "2026-02-17T10:00:00.000Z",
+            nullable: true,
+            description: "收單截止時間（選填）",
+            example: "2026-06-14T10:00:00.000Z",
           },
           note: {
             type: "string",
             nullable: true,
-            description: "接單排程備註",
+            description: "排程備註",
             example: "今日 14:00 後可取貨",
+          },
+          venue_name: {
+            type: "string",
+            nullable: true,
+            description: "巡迴場地名稱（選填，null = 一般店面行程）",
+            example: "嘉義場",
+          },
+          venue_address: {
+            type: "string",
+            nullable: true,
+            description: "巡迴場地地址（選填）",
+            example: "嘉義市東區某路123號",
+          },
+          venue_start: {
+            type: "string",
+            nullable: true,
+            description: "現場販售開始時間，格式 HH:MM（選填）",
+            example: "10:00",
+          },
+          venue_end: {
+            type: "string",
+            nullable: true,
+            description: "現場販售結束時間，格式 HH:MM（選填，須晚於 venue_start）",
+            example: "14:00",
           },
           items: {
             type: "array",
-            description: "接單排程商品（可選）",
+            description: "排程商品（選填）",
             items: { $ref: "#/components/schemas/ScheduleItemBody" },
           },
         },
@@ -910,18 +936,35 @@
     "/schedules/{date}": {
       get: {
         tags: ["Schedules"],
-        summary: "取得指定日期的接單排程與品項",
+        summary: "取得指定日期的接單排程與品項（回傳該日第一筆）",
         security: [{ BearerAuth: [] }],
         parameters: [
           {
             name: "date",
             in: "path",
             required: true,
-            schema: { type: "string", format: "date", example: "2026-02-17" },
+            schema: { type: "string", format: "date", example: "2026-06-14" },
             description: "排程日期 (YYYY-MM-DD 格式)",
           },
         ],
-        responses: { 200: { description: "成功" }, 400: { description: "日期格式錯誤" }, 404: { description: "找不到該日期的接單排程" } },
+        responses: { 200: { description: "成功" }, 400: { description: "日期格式錯誤" } },
+      },
+    },
+    "/schedules/detail/{id}": {
+      get: {
+        tags: ["Schedules"],
+        summary: "取得指定排程詳情（含品項與訂單，支援一天多場）",
+        security: [{ BearerAuth: [] }],
+        parameters: [
+          {
+            name: "id",
+            in: "path",
+            required: true,
+            schema: { type: "string", format: "uuid" },
+            description: "排程 ID",
+          },
+        ],
+        responses: { 200: { description: "成功，找不到回傳 null" }, 500: { description: "伺服器錯誤" } },
       },
     },
     "/schedules/{id}": {

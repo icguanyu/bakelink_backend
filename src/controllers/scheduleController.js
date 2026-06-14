@@ -110,6 +110,44 @@ function normalizeSchedulePayload(body = {}, { partial = false } = {}) {
     result.note = null;
   }
 
+  const TIME_RE = /^([01]\d|2[0-3]):([0-5]\d)$/;
+
+  if (body.venue_name != null) {
+    result.venue_name = String(body.venue_name).trim() || null;
+  } else if (!partial) {
+    result.venue_name = null;
+  }
+
+  if (body.venue_address != null) {
+    result.venue_address = String(body.venue_address).trim() || null;
+  } else if (!partial) {
+    result.venue_address = null;
+  }
+
+  if (body.venue_start != null) {
+    const s = String(body.venue_start).trim();
+    if (s && !TIME_RE.test(s)) {
+      return { error: "venue_start 格式必須為 HH:MM（例：10:00）" };
+    }
+    result.venue_start = s || null;
+  } else if (!partial) {
+    result.venue_start = null;
+  }
+
+  if (body.venue_end != null) {
+    const s = String(body.venue_end).trim();
+    if (s && !TIME_RE.test(s)) {
+      return { error: "venue_end 格式必須為 HH:MM（例：14:00）" };
+    }
+    result.venue_end = s || null;
+  } else if (!partial) {
+    result.venue_end = null;
+  }
+
+  if (result.venue_start && result.venue_end && result.venue_start >= result.venue_end) {
+    return { error: "venue_start 必須早於 venue_end" };
+  }
+
   if (body.items != null) {
     if (!Array.isArray(body.items)) {
       return { error: "items 必須為陣列" };
@@ -327,6 +365,7 @@ async function list(req, res) {
 
       result = await pool.query(
         `SELECT s.id, s.schedule_date::text AS schedule_date, s.status, s.order_start_at, s.order_end_at, s.note,
+                s.venue_name, s.venue_address, TO_CHAR(s.venue_start, 'HH24:MI') AS venue_start, TO_CHAR(s.venue_end, 'HH24:MI') AS venue_end,
                 COUNT(DISTINCT si.id)::int AS item_count,
                 COUNT(DISTINCT o.id)::int AS order_count
          FROM schedules s
@@ -341,6 +380,7 @@ async function list(req, res) {
     } else {
       result = await pool.query(
         `SELECT s.id, s.schedule_date::text AS schedule_date, s.status, s.order_start_at, s.order_end_at, s.note,
+                s.venue_name, s.venue_address, TO_CHAR(s.venue_start, 'HH24:MI') AS venue_start, TO_CHAR(s.venue_end, 'HH24:MI') AS venue_end,
                 COUNT(DISTINCT si.id)::int AS item_count,
                 COUNT(DISTINCT o.id)::int AS order_count
          FROM schedules s
@@ -435,10 +475,13 @@ async function getByDate(req, res) {
     // 查詢行程基本資料
     const scheduleResult = await pool.query(
       `SELECT s.id, s.user_id, s.schedule_date::text AS schedule_date, s.status, s.order_start_at, s.order_end_at, s.note,
+              s.venue_name, s.venue_address, TO_CHAR(s.venue_start, 'HH24:MI') AS venue_start, TO_CHAR(s.venue_end, 'HH24:MI') AS venue_end,
               (SELECT COUNT(*)::int FROM schedule_items si WHERE si.schedule_id = s.id) AS item_count,
               (SELECT COUNT(*)::int FROM orders o WHERE o.schedule_id = s.id) AS order_count
        FROM schedules s
-       WHERE s.schedule_date = $1 AND s.user_id = $2`,
+       WHERE s.schedule_date = $1 AND s.user_id = $2
+       ORDER BY s.id ASC
+       LIMIT 1`,
       [scheduleDate, req.user.sub],
     );
 
@@ -550,9 +593,10 @@ async function create(req, res) {
     await client.query("BEGIN");
 
     const scheduleResult = await client.query(
-      `INSERT INTO schedules (user_id, schedule_date, status, order_start_at, order_end_at, note)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       RETURNING id, user_id, schedule_date::text AS schedule_date, status, order_start_at, order_end_at, note`,
+      `INSERT INTO schedules (user_id, schedule_date, status, order_start_at, order_end_at, note, venue_name, venue_address, venue_start, venue_end)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+       RETURNING id, user_id, schedule_date::text AS schedule_date, status, order_start_at, order_end_at, note,
+                 venue_name, venue_address, TO_CHAR(venue_start, 'HH24:MI') AS venue_start, TO_CHAR(venue_end, 'HH24:MI') AS venue_end`,
       [
         req.user.sub,
         payload.schedule_date,
@@ -560,6 +604,10 @@ async function create(req, res) {
         payload.order_start_at,
         payload.order_end_at,
         payload.note,
+        payload.venue_name,
+        payload.venue_address,
+        payload.venue_start,
+        payload.venue_end,
       ],
     );
 
@@ -571,9 +619,6 @@ async function create(req, res) {
     return res.status(201).json(mapScheduleDate(schedule, timeZone));
   } catch (error) {
     await client.query("ROLLBACK");
-    if (error.code === "23505") {
-      return res.status(409).json({ message: "此日期已有排程存在" });
-    }
     if (error.code === "23514" || error.code === "22007") {
       return res.status(400).json({ message: "日期或接單時間範圍無效" });
     }
@@ -627,6 +672,22 @@ async function update(req, res) {
     editableFields.push(`note = $${paramIndex++}`);
     values.push(payload.note);
   }
+  if (Object.prototype.hasOwnProperty.call(payload, "venue_name")) {
+    editableFields.push(`venue_name = $${paramIndex++}`);
+    values.push(payload.venue_name);
+  }
+  if (Object.prototype.hasOwnProperty.call(payload, "venue_address")) {
+    editableFields.push(`venue_address = $${paramIndex++}`);
+    values.push(payload.venue_address);
+  }
+  if (Object.prototype.hasOwnProperty.call(payload, "venue_start")) {
+    editableFields.push(`venue_start = $${paramIndex++}`);
+    values.push(payload.venue_start);
+  }
+  if (Object.prototype.hasOwnProperty.call(payload, "venue_end")) {
+    editableFields.push(`venue_end = $${paramIndex++}`);
+    values.push(payload.venue_end);
+  }
   editableFields.push(`updated_at = NOW()`);
 
   const client = await pool.connect();
@@ -639,13 +700,15 @@ async function update(req, res) {
         `UPDATE schedules
          SET ${editableFields.join(", ")}
          WHERE id = $${paramIndex} AND user_id = $${paramIndex + 1}
-         RETURNING id, user_id, schedule_date::text AS schedule_date, status, order_start_at, order_end_at, note`,
+         RETURNING id, user_id, schedule_date::text AS schedule_date, status, order_start_at, order_end_at, note,
+                   venue_name, venue_address, TO_CHAR(venue_start, 'HH24:MI') AS venue_start, TO_CHAR(venue_end, 'HH24:MI') AS venue_end`,
         [...values, req.params.id, req.user.sub],
       );
       schedule = updateResult.rows[0];
     } else {
       const currentResult = await client.query(
-      `SELECT id, user_id, schedule_date::text AS schedule_date, status, order_start_at, order_end_at, note
+      `SELECT id, user_id, schedule_date::text AS schedule_date, status, order_start_at, order_end_at, note,
+              venue_name, venue_address, TO_CHAR(venue_start, 'HH24:MI') AS venue_start, TO_CHAR(venue_end, 'HH24:MI') AS venue_end
          FROM schedules
          WHERE id = $1 AND user_id = $2`,
         [req.params.id, req.user.sub],
@@ -667,9 +730,6 @@ async function update(req, res) {
     return res.json(mapScheduleDate(schedule, timeZone));
   } catch (error) {
     await client.query("ROLLBACK");
-    if (error.code === "23505") {
-      return res.status(409).json({ message: "此日期已有排程存在" });
-    }
     if (error.code === "23514" || error.code === "22007") {
       return res.status(400).json({ message: "日期或接單時間範圍無效" });
     }
@@ -687,6 +747,109 @@ async function update(req, res) {
     return res.status(500).json({ message: "更新排程失敗", error: error.message });
   } finally {
     client.release();
+  }
+}
+
+async function getById(req, res) {
+  try {
+    const scheduleResult = await pool.query(
+      `SELECT s.id, s.user_id, s.schedule_date::text AS schedule_date, s.status, s.order_start_at, s.order_end_at, s.note,
+              s.venue_name, s.venue_address, TO_CHAR(s.venue_start, 'HH24:MI') AS venue_start, TO_CHAR(s.venue_end, 'HH24:MI') AS venue_end,
+              (SELECT COUNT(*)::int FROM schedule_items si WHERE si.schedule_id = s.id) AS item_count,
+              (SELECT COUNT(*)::int FROM orders o WHERE o.schedule_id = s.id) AS order_count
+       FROM schedules s
+       WHERE s.id = $1 AND s.user_id = $2`,
+      [req.params.id, req.user.sub],
+    );
+
+    if (!scheduleResult.rows[0]) {
+      return res.json(null);
+    }
+
+    const scheduleId = scheduleResult.rows[0].id;
+    const itemsResult = await pool.query(
+      `SELECT si.id,
+              si.product_id,
+              si.product_name,
+              si.unit_price,
+              si.sales_limit,
+              COALESCE(sold.ordered_quantity, 0)::int AS ordered_quantity,
+              p.is_sliceable,
+              p.slice_price,
+              p.image_urls,
+              CASE WHEN array_length(p.image_urls, 1) > 0 THEN p.image_urls[1] ELSE NULL END AS image_url
+       FROM schedule_items si
+       LEFT JOIN products p ON p.id = si.product_id
+       LEFT JOIN (
+         SELECT oi.schedule_item_id, SUM(oi.quantity)::int AS ordered_quantity
+         FROM order_items oi
+         INNER JOIN orders o ON o.id = oi.order_id
+         WHERE o.status IN ('PLACED', 'COMPLETED')
+         GROUP BY oi.schedule_item_id
+       ) sold ON sold.schedule_item_id = si.id
+       WHERE si.schedule_id = $1
+       ORDER BY si.id ASC`,
+      [scheduleId],
+    );
+    const scheduleItems = itemsResult.rows.map((item) =>
+      normalizeDecimalFields(item, ["unit_price", "slice_price"]),
+    );
+
+    const ordersResult = await pool.query(
+      `SELECT id, order_no, status, customer_name, customer_phone, customer_address, pickup_time, note, payment_method, bring_own_bag, pickup_method, total_amount, created_at
+       FROM orders
+       WHERE schedule_id = $1 AND user_id = $2
+       ORDER BY created_at DESC`,
+      [scheduleId, req.user.sub],
+    );
+
+    let orderItemsByOrderId = new Map();
+    if (ordersResult.rows.length > 0) {
+      const orderIds = ordersResult.rows.map((row) => row.id);
+      const orderItemsResult = await pool.query(
+        `SELECT order_id, id, schedule_item_id, product_id, product_name, unit_price, quantity, is_sliced, line_total
+         FROM order_items
+         WHERE order_id = ANY($1::uuid[])
+         ORDER BY id ASC`,
+        [orderIds],
+      );
+
+      orderItemsByOrderId = orderItemsResult.rows.reduce((acc, row) => {
+        if (!acc.has(row.order_id)) {
+          acc.set(row.order_id, []);
+        }
+        acc.get(row.order_id).push({
+          id: row.id,
+          schedule_item_id: row.schedule_item_id,
+          product_id: row.product_id,
+          product_name: row.product_name,
+          unit_price: row.unit_price,
+          quantity: row.quantity,
+          is_sliced: row.is_sliced,
+          line_total: row.line_total,
+        });
+        return acc;
+      }, new Map());
+    }
+
+    const orders = ordersResult.rows.map((row) => ({
+      ...normalizeDecimalFields(row, ["total_amount"]),
+      pickup_time: formatTimeToHHmm(row.pickup_time),
+      pickup_method: row.pickup_method == null ? row.pickup_method : String(row.pickup_method).toLowerCase(),
+      items: (orderItemsByOrderId.get(row.id) || []).map((item) =>
+        normalizeDecimalFields(item, ["unit_price", "line_total"]),
+      ),
+    }));
+
+    const timeZone = resolveTimeZone(req);
+    return res.json({
+      ...mapScheduleDate(scheduleResult.rows[0], timeZone),
+      items: scheduleItems,
+      orders,
+    });
+  } catch (error) {
+    console.error("GET /schedules/detail/:id error:", error.message);
+    return res.status(500).json({ message: "取得排程失敗", error: error.message });
   }
 }
 
@@ -717,6 +880,7 @@ module.exports = {
   list,
   listByMonth,
   getByDate,
+  getById,
   create,
   update,
   remove,
