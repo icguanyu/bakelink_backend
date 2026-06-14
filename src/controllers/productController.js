@@ -39,6 +39,15 @@ function normalizeProductPayload(body = {}) {
     isSliceable = isSliceableRaw;
   }
 
+  let slicePrice = null;
+  if (body.slice_price != null) {
+    const slicePriceNum = Number(body.slice_price);
+    if (!Number.isFinite(slicePriceNum) || slicePriceNum < 0) {
+      return { error: "slice_price 必須為非負數" };
+    }
+    slicePrice = slicePriceNum;
+  }
+
   const imageUrlsRaw = body.image_urls;
   let imageUrls = [];
   if (imageUrlsRaw != null) {
@@ -99,6 +108,7 @@ function normalizeProductPayload(body = {}) {
       ingredients,
       is_active: isActive,
       is_sliceable: isSliceable,
+      slice_price: slicePrice,
       image_urls: imageUrls,
       ingredient_details: ingredientDetails,
     },
@@ -131,7 +141,7 @@ async function list(req, res) {
 
       result = await pool.query(
         `SELECT p.id, p.category_id, c.name AS category_name,
-                p.name, p.price, p.description, p.ingredients, p.is_active, p.is_sliceable,
+                p.name, p.price, p.description, p.ingredients, p.is_active, p.is_sliceable, p.slice_price,
                 CASE WHEN array_length(p.image_urls, 1) > 0 THEN p.image_urls[1] ELSE NULL END AS image_url,
                 p.ingredient_details
          FROM products p
@@ -147,7 +157,7 @@ async function list(req, res) {
     } else {
       result = await pool.query(
         `SELECT p.id, p.category_id, c.name AS category_name,
-                p.name, p.price, p.description, p.ingredients, p.is_active, p.is_sliceable,
+                p.name, p.price, p.description, p.ingredients, p.is_active, p.is_sliceable, p.slice_price,
                 CASE WHEN array_length(p.image_urls, 1) > 0 THEN p.image_urls[1] ELSE NULL END AS image_url,
                 p.ingredient_details
          FROM products p
@@ -162,7 +172,7 @@ async function list(req, res) {
       total = result.rows.length;
     }
 
-    const data = result.rows.map((row) => normalizeDecimalFields(row, ["price"]));
+    const data = result.rows.map((row) => normalizeDecimalFields(row, ["price", "slice_price"]));
     res.json({
       data,
       pagination: buildListPaginationMeta({ page, limit, total, hasPagination }),
@@ -177,7 +187,7 @@ async function getById(req, res) {
   try {
     const result = await pool.query(
       `SELECT p.id, p.user_id, p.category_id, c.name AS category_name,
-              p.name, p.price, p.description, p.ingredients, p.is_active, p.is_sliceable, p.image_urls,
+              p.name, p.price, p.description, p.ingredients, p.is_active, p.is_sliceable, p.slice_price, p.image_urls,
               CASE WHEN array_length(p.image_urls, 1) > 0 THEN p.image_urls[1] ELSE NULL END AS image_url,
               p.ingredient_details
        FROM products p
@@ -191,7 +201,7 @@ async function getById(req, res) {
       return res.status(404).json({ message: "找不到商品" });
     }
 
-    res.json(normalizeDecimalFields(result.rows[0], ["price"]));
+    res.json(normalizeDecimalFields(result.rows[0], ["price", "slice_price"]));
   } catch (error) {
     console.error("GET /products/:id error:", error.message);
     res.status(500).json({ message: "取得商品失敗", error: error.message });
@@ -209,11 +219,11 @@ async function create(req, res) {
     const result = await pool.query(
       `INSERT INTO products (
          user_id, category_id, name, price, description, ingredients,
-         is_active, is_sliceable, image_urls, ingredient_details
+         is_active, is_sliceable, slice_price, image_urls, ingredient_details
        )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb)
        RETURNING id, user_id, category_id, name, price, description, ingredients,
-                 is_active, is_sliceable,
+                 is_active, is_sliceable, slice_price,
                  CASE WHEN array_length(image_urls, 1) > 0 THEN image_urls[1] ELSE NULL END AS image_url,
                  ingredient_details`,
       [
@@ -225,12 +235,13 @@ async function create(req, res) {
         payload.ingredients,
         payload.is_active,
         payload.is_sliceable,
+        payload.slice_price,
         payload.image_urls,
         JSON.stringify(payload.ingredient_details),
       ],
     );
 
-    res.status(201).json(normalizeDecimalFields(result.rows[0], ["price"]));
+    res.status(201).json(normalizeDecimalFields(result.rows[0], ["price", "slice_price"]));
   } catch (error) {
     if (error.code === "23505") {
       return res.status(409).json({ message: "商品名稱已存在" });
@@ -260,12 +271,13 @@ async function update(req, res) {
            ingredients = $5,
            is_active = $6,
            is_sliceable = $7,
-           image_urls = $8,
-           ingredient_details = $9::jsonb,
+           slice_price = $8,
+           image_urls = $9,
+           ingredient_details = $10::jsonb,
            updated_at = NOW()
-       WHERE id = $10 AND user_id = $11
+       WHERE id = $11 AND user_id = $12
        RETURNING id, user_id, category_id, name, price, description, ingredients,
-                 is_active, is_sliceable,
+                 is_active, is_sliceable, slice_price,
                  CASE WHEN array_length(image_urls, 1) > 0 THEN image_urls[1] ELSE NULL END AS image_url,
                  ingredient_details`,
       [
@@ -276,6 +288,7 @@ async function update(req, res) {
         payload.ingredients,
         payload.is_active,
         payload.is_sliceable,
+        payload.slice_price,
         payload.image_urls,
         JSON.stringify(payload.ingredient_details),
         req.params.id,
@@ -287,7 +300,7 @@ async function update(req, res) {
       return res.status(404).json({ message: "找不到商品" });
     }
 
-    res.json(normalizeDecimalFields(result.rows[0], ["price"]));
+    res.json(normalizeDecimalFields(result.rows[0], ["price", "slice_price"]));
   } catch (error) {
     if (error.code === "23505") {
       return res.status(409).json({ message: "商品名稱已存在" });

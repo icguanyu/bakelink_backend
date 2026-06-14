@@ -207,6 +207,18 @@
             description: "商品圖片 URL 陣列（選填）",
             example: ["https://example.com/img1.jpg", "https://example.com/img2.jpg"],
           },
+          is_sliceable: {
+            type: "boolean",
+            description: "是否可切片（選填，預設 false）",
+            example: true,
+          },
+          slice_price: {
+            type: "number",
+            format: "float",
+            nullable: true,
+            description: "切片售價（選填，is_sliceable 為 true 時使用，需為非負數）",
+            example: 49.0,
+          },
           ingredient_details: {
             type: "array",
             description: "成分明細（選填）",
