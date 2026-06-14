@@ -9,5 +9,5 @@ ALTER TABLE schedules
   ADD COLUMN IF NOT EXISTS venue_address TEXT,
   ADD COLUMN IF NOT EXISTS venue_start   TIME,
   ADD COLUMN IF NOT EXISTS venue_end     TIME,
-  ADD CONSTRAINT IF NOT EXISTS schedules_venue_time_check
+  ADD CONSTRAINT schedules_venue_time_check
     CHECK (venue_start IS NULL OR venue_end IS NULL OR venue_start < venue_end);
