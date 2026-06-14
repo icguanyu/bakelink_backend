@@ -561,7 +561,8 @@ async function listOrdersByPhone(req, res) {
               o.customer_address, o.pickup_time, o.pickup_method, o.bring_own_bag,
               o.note, o.payment_method, o.total_amount,
               s.schedule_date::text AS schedule_date,
-              s.venue_name, s.venue_address, TO_CHAR(s.venue_start, 'HH24:MI') AS venue_start, TO_CHAR(s.venue_end, 'HH24:MI') AS venue_end
+              s.venue_name, s.venue_address, TO_CHAR(s.venue_start, 'HH24:MI') AS venue_start, TO_CHAR(s.venue_end, 'HH24:MI') AS venue_end,
+              (s.venue_name IS NOT NULL) AS is_venue
        FROM orders o
        JOIN schedules s ON s.id = o.schedule_id
        WHERE o.user_id = $1
@@ -631,7 +632,8 @@ async function getOrderByNo(req, res) {
               o.customer_address, o.pickup_time, o.pickup_method, o.bring_own_bag,
               o.note, o.payment_method, o.total_amount,
               s.schedule_date::text AS schedule_date,
-              s.venue_name, s.venue_address, TO_CHAR(s.venue_start, 'HH24:MI') AS venue_start, TO_CHAR(s.venue_end, 'HH24:MI') AS venue_end
+              s.venue_name, s.venue_address, TO_CHAR(s.venue_start, 'HH24:MI') AS venue_start, TO_CHAR(s.venue_end, 'HH24:MI') AS venue_end,
+              (s.venue_name IS NOT NULL) AS is_venue
        FROM orders o
        JOIN schedules s ON s.id = o.schedule_id
        WHERE o.user_id = $1
