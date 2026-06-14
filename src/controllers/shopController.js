@@ -462,10 +462,12 @@ async function createOrder(req, res) {
     const orderItems = [];
     for (const item of payload.items) {
       const scheduleItemResult = await client.query(
-        `SELECT id, product_id, product_name, unit_price, sales_limit
-         FROM schedule_items
-         WHERE id = $1 AND schedule_id = $2
-         FOR UPDATE`,
+        `SELECT si.id, si.product_id, si.product_name, si.unit_price, si.sales_limit,
+                p.is_sliceable, p.slice_price
+         FROM schedule_items si
+         LEFT JOIN products p ON p.id = si.product_id
+         WHERE si.id = $1 AND si.schedule_id = $2
+         FOR UPDATE OF si`,
         [item.schedule_item_id, payload.schedule_id],
       );
       const si = scheduleItemResult.rows[0];
@@ -486,7 +488,11 @@ async function createOrder(req, res) {
         }
       }
 
-      const lineTotal = Number(si.unit_price) * item.quantity;
+      const effectivePrice =
+        item.is_sliced && si.is_sliceable && si.slice_price != null
+          ? Number(si.slice_price)
+          : Number(si.unit_price);
+      const lineTotal = effectivePrice * item.quantity;
       totalAmount += lineTotal;
 
       await client.query(
@@ -494,12 +500,12 @@ async function createOrder(req, res) {
            order_id, schedule_item_id, product_id, product_name,
            unit_price, quantity, is_sliced, line_total
          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-        [order.id, si.id, si.product_id, si.product_name, si.unit_price, item.quantity, item.is_sliced, lineTotal],
+        [order.id, si.id, si.product_id, si.product_name, effectivePrice, item.quantity, item.is_sliced, lineTotal],
       );
 
       orderItems.push(
         normalizeDecimalFields(
-          { product_name: si.product_name, unit_price: si.unit_price, quantity: item.quantity, is_sliced: item.is_sliced, line_total: lineTotal },
+          { product_name: si.product_name, unit_price: effectivePrice, quantity: item.quantity, is_sliced: item.is_sliced, line_total: lineTotal },
           ["unit_price", "line_total"],
         ),
       );
