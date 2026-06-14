@@ -119,7 +119,8 @@ async function listSchedules(req, res) {
 
     const result = await pool.query(
       `SELECT id, schedule_date::text AS schedule_date, status, note,
-              order_start_at, order_end_at
+              order_start_at, order_end_at,
+              venue_name, venue_address, TO_CHAR(venue_start, 'HH24:MI') AS venue_start, TO_CHAR(venue_end, 'HH24:MI') AS venue_end
        FROM schedules
        WHERE ${whereClauses.join(" AND ")}
        ORDER BY schedule_date ASC`,
