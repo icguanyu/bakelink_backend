@@ -493,10 +493,12 @@ async function create(req, res) {
       const keyValue = item.schedule_item_id || item.product_id;
 
       const scheduleItemResult = await client.query(
-        `SELECT si.id, si.schedule_id, si.product_id, si.product_name, si.unit_price, si.sales_limit
+        `SELECT si.id, si.schedule_id, si.product_id, si.product_name, si.unit_price, si.sales_limit,
+                p.is_sliceable, p.slice_price
          FROM schedule_items si
+         LEFT JOIN products p ON p.id = si.product_id
          WHERE si.schedule_id = $1 AND ${keySql}
-         FOR UPDATE`,
+         FOR UPDATE OF si`,
         [payload.schedule_id, keyValue],
       );
       const scheduleItem = scheduleItemResult.rows[0];
@@ -519,7 +521,11 @@ async function create(req, res) {
         }
       }
 
-      const lineTotal = Number(scheduleItem.unit_price) * item.quantity;
+      const effectivePrice =
+        item.is_sliced && scheduleItem.is_sliceable && scheduleItem.slice_price != null
+          ? Number(scheduleItem.slice_price)
+          : Number(scheduleItem.unit_price);
+      const lineTotal = effectivePrice * item.quantity;
       totalAmount += lineTotal;
 
       await client.query(
@@ -531,7 +537,7 @@ async function create(req, res) {
           scheduleItem.id,
           scheduleItem.product_id,
           scheduleItem.product_name,
-          scheduleItem.unit_price,
+          effectivePrice,
           item.quantity,
           item.is_sliced,
           lineTotal,
