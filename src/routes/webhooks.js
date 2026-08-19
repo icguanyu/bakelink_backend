@@ -17,11 +17,12 @@ function verifyLineSignature(req) {
   return digest === signature;
 }
 
-function replyMessage(replyToken, text) {
-  const body = JSON.stringify({
-    replyToken,
-    messages: [{ type: "text", text }],
-  });
+function replyMessage(replyToken, texts) {
+  const messages = (Array.isArray(texts) ? texts : [texts]).map((text) => ({
+    type: "text",
+    text,
+  }));
+  const body = JSON.stringify({ replyToken, messages });
   const req = https.request("https://api.line.me/v2/bot/message/reply", {
     method: "POST",
     headers: {
@@ -51,10 +52,10 @@ router.post("/line", (req, res) => {
     if (event.type === "message" && event.message?.type === "text") {
       const text = event.message.text.trim();
       if (text === "綁定") {
-        replyMessage(
-          event.replyToken,
-          `您的 LINE User ID 為：\n${lineUserId}\n\n請複製此 ID，貼到後台「設定 → 05 通知」進行綁定。`,
-        );
+        replyMessage(event.replyToken, [
+          "以下為您的 LINE User ID，請複製後貼到後台「設定 → 05 通知」進行綁定：",
+          lineUserId,
+        ]);
       }
     }
   }
