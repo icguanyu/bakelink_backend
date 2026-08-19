@@ -16,6 +16,7 @@
     { name: "Orders", description: "商家端訂單 CRUD 與狀態管理" },
     { name: "Upload", description: "圖片上傳" },
     { name: "Shop (Public)", description: "前台公開 API，無需登入。供消費者瀏覽店家、行程與下單使用。" },
+    { name: "LINE Notifications", description: "LINE Bot 綁定與訂單推播通知" },
   ],
   servers: [{ url: "http://localhost:3000" }],
   components: {
@@ -656,6 +657,46 @@
         },
       },
     },
+    "/users/me/line": {
+      patch: {
+        tags: ["LINE Notifications"],
+        summary: "綁定 LINE User ID",
+        description: "店家將 LINE Bot 回傳的 User ID 填入以啟用訂單通知。User ID 格式為 U 開頭、共 33 字元的十六進位字串。",
+        security: [{ BearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["lineUserId"],
+                properties: {
+                  lineUserId: {
+                    type: "string",
+                    example: "Ue1234567890abcdef1234567890abcd",
+                    description: "LINE User ID（U 開頭，共 33 字元）",
+                  },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          200: { description: "綁定成功" },
+          400: { description: "lineUserId 格式不正確" },
+          401: { description: "未授權" },
+        },
+      },
+      delete: {
+        tags: ["LINE Notifications"],
+        summary: "解除 LINE 綁定",
+        security: [{ BearerAuth: [] }],
+        responses: {
+          200: { description: "解除成功" },
+          401: { description: "未授權" },
+        },
+      },
+    },
     "/product-categories": {
       post: {
         tags: ["Product Categories"],
@@ -1274,7 +1315,7 @@
       post: {
         tags: ["Shop (Public)"],
         summary: "消費者下單",
-        description: "無需登入。行程狀態必須為 OPEN，含防超賣機制。",
+        description: "無需登入。行程狀態必須為 OPEN，含防超賣機制。下單成功後會自動推播 LINE 通知給已綁定的店家。",
         parameters: [
           { name: "slug", in: "path", required: true, schema: { type: "string", example: "nice-bread" }, description: "店家 slug" },
         ],
@@ -1426,6 +1467,34 @@
           401: { description: "未授權" },
           500: { description: "伺服器錯誤" },
           502: { description: "儲存服務錯誤" },
+        },
+      },
+    },
+    "/webhooks/line": {
+      post: {
+        tags: ["LINE Notifications"],
+        summary: "LINE Bot Webhook",
+        description: "接收 LINE Platform 的事件推播（Follow、訊息等）。店家加入 Bot 好友後，Bot 會自動回覆其 LINE User ID，供店家複製至設定頁完成綁定。此端點不需 JWT，由 LINE Platform 呼叫，使用 HMAC-SHA256 簽名驗證。",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  events: {
+                    type: "array",
+                    items: { type: "object" },
+                    description: "LINE 平台事件陣列",
+                  },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          200: { description: "成功接收" },
+          400: { description: "簽名驗證失敗" },
         },
       },
     },

@@ -6,6 +6,7 @@ const {
   formatTimeToHHmm,
 } = require("../utils/datetime");
 const { normalizeDecimalFields } = require("../utils/number");
+const { pushMessage, buildOrderNotification } = require("../services/lineNotify");
 
 // ────────────────────────────────────────────────────────────
 // Helpers
@@ -522,6 +523,20 @@ async function createOrder(req, res) {
     await client.query("COMMIT");
 
     const row = finalOrder.rows[0];
+
+    // Push LINE notification to shop owner — fire-and-forget, never block the response
+    pool.query(`SELECT line_user_id FROM users WHERE id = $1`, [userId])
+      .then(({ rows }) => {
+        const lineUserId = rows[0]?.line_user_id;
+        if (lineUserId) {
+          return pushMessage(
+            lineUserId,
+            buildOrderNotification({ ...row, payment_method: payload.payment_method }),
+          );
+        }
+      })
+      .catch((err) => console.error("[LINE notify error]", err.message));
+
     return res.status(201).json({
       ...normalizeDecimalFields(row, ["total_amount"]),
       pickup_time: formatTimeToHHmm(row.pickup_time),

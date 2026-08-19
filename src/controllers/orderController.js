@@ -1,4 +1,5 @@
 const { pool } = require("../db");
+const { pushMessage, buildOrderNotification } = require("../services/lineNotify");
 const {
   resolvePagination,
   buildListPaginationMeta,
@@ -555,6 +556,19 @@ async function create(req, res) {
     );
 
     await client.query("COMMIT");
+
+    // Push LINE notification — fire-and-forget, never block the response
+    const lineResult = await pool.query(
+      `SELECT line_user_id FROM users WHERE id = $1`,
+      [req.user.sub],
+    );
+    const lineUserId = lineResult.rows[0]?.line_user_id;
+    if (lineUserId) {
+      pushMessage(lineUserId, buildOrderNotification(updatedOrderResult.rows[0])).catch((err) =>
+        console.error("[LINE notify error]", err.message),
+      );
+    }
+
     const timeZone = resolveTimeZone(req);
     return res.status(201).json(formatOrderRow(updatedOrderResult.rows[0], timeZone));
   } catch (error) {

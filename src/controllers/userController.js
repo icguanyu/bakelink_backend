@@ -277,6 +277,7 @@ function mapUserSettingsRow(row) {
     lineUrl: toText(normalized.line_url),
     facebookUrl: toText(normalized.facebook_url),
     instagramUrl: toText(normalized.instagram_url),
+    lineUserId: toText(normalized.line_user_id),
   };
 }
 
@@ -305,7 +306,8 @@ async function getMe(req, res) {
               payment_methods, pickup_methods,
               shipping_free_threshold, shipping_fee, shipping_note,
               packaging_default_pack, packaging_pack_fee, packaging_eco_discount, packaging_note,
-              business_hours, line_url, facebook_url, instagram_url
+              business_hours, line_url, facebook_url, instagram_url,
+              line_user_id
        FROM users
        WHERE id = $1`,
       [req.user.sub],
@@ -455,4 +457,38 @@ async function updateMe(req, res) {
   }
 }
 
-module.exports = { list, getMe, updateMe };
+async function bindLine(req, res) {
+  const lineUserId = String(req.body?.lineUserId || "").trim();
+  if (!lineUserId) {
+    return res.status(400).json({ message: "lineUserId 為必填" });
+  }
+  if (!/^U[0-9a-f]{32}$/.test(lineUserId)) {
+    return res.status(400).json({ message: "lineUserId 格式不正確" });
+  }
+
+  try {
+    await pool.query(
+      `UPDATE users SET line_user_id = $1, updated_at = NOW() WHERE id = $2`,
+      [lineUserId, req.user.sub],
+    );
+    res.json({ ok: true, lineUserId });
+  } catch (error) {
+    console.error("PATCH /users/me/line error:", error.message);
+    res.status(500).json({ message: "儲存 LINE User ID 失敗", error: error.message });
+  }
+}
+
+async function unbindLine(req, res) {
+  try {
+    await pool.query(
+      `UPDATE users SET line_user_id = NULL, updated_at = NOW() WHERE id = $1`,
+      [req.user.sub],
+    );
+    res.json({ ok: true });
+  } catch (error) {
+    console.error("DELETE /users/me/line error:", error.message);
+    res.status(500).json({ message: "解除 LINE 綁定失敗", error: error.message });
+  }
+}
+
+module.exports = { list, getMe, updateMe, bindLine, unbindLine };

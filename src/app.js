@@ -18,6 +18,7 @@ app.get("/docs.json", (req, res) => {
 app.use("/docs", swaggerUi.serve, swaggerUi.setup(openapi));
 
 // Routes
+app.use("/webhooks", require("./routes/webhooks"));
 app.use("/auth", require("./routes/auth"));
 app.use("/users", require("./routes/users"));
 app.use("/product-categories", require("./routes/productCategories"));
