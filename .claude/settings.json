@@ -3,7 +3,25 @@
     "allow": [
       "PowerShell(Get-ChildItem -Path \"c:\\\\Users\\\\user\\\\Desktop\\\\bakelink_backend\" -Recurse -Force | ForEach-Object { $_.FullName } | Sort-Object)",
       "Bash(git commit -m ' *)",
-      "Bash(git add *)"
+      "Bash(git add *)",
+      "Bash(git push *)",
+      "Bash(Get-ChildItem \"c:\\\\Users\\\\user\\\\Desktop\\\\bakelink_backend\\\\src\\\\routes\" -Force)",
+      "Bash(Get-ChildItem \"c:\\\\Users\\\\user\\\\Desktop\\\\bakelink_backend\\\\sql\\\\migrations\\\\\")",
+      "Bash(Get-ChildItem \"c:\\\\Users\\\\user\\\\Desktop\\\\bakelink_backend\" -Exclude node_modules)",
+      "Bash(Select-Object Name)",
+      "PowerShell(Get-ChildItem \"c:\\\\Users\\\\user\\\\Desktop\\\\bakelink_backend\" | Where-Object { $_.Name -ne \"node_modules\" } | Select-Object Name, PSIsContainer)",
+      "PowerShell(Get-ChildItem \"c:\\\\Users\\\\user\\\\Desktop\\\\bakelink_backend\" -Name | Where-Object { $_ -ne \"node_modules\" })",
+      "Read(//mnt/c/Users/user/Desktop/**)",
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\user\\\\Desktop\\\\bakelink_backend\" -Recurse -Directory)",
+      "Bash(Select-Object -First 20)",
+      "Bash(xargs grep *)",
+      "Bash(grep -rn \"worker\\\\|Worker\\\\|Job\\\\|Cron\\\\|cron\\\\|schedule.*task\\\\|task.*schedule\" . --include=\"*.js\" ! -path \"./node_modules/*\")",
+      "Bash(xargs -0 grep -l \"order_end_at\")",
+      "Bash(git -C \"c:\\\\Users\\\\user\\\\Desktop\\\\bakelink_backend\" status)",
+      "Bash(git -C \"c:\\\\Users\\\\user\\\\Desktop\\\\bakelink_backend\" diff)"
+    ],
+    "additionalDirectories": [
+      "c:\\Users\\user\\Desktop\\bakelink_backend"
     ]
   }
 }
