@@ -126,19 +126,6 @@ function formatOrderRow(row, timeZone) {
   };
 }
 
-function getOrderNoPhonePart(phone) {
-  const digits = String(phone || "").replace(/\D/g, "");
-  if (digits.length === 0) {
-    return "000";
-  }
-  if (digits.startsWith("0") && digits.length >= 4) {
-    return digits.slice(1, 4);
-  }
-  if (digits.length >= 3) {
-    return digits.slice(0, 3);
-  }
-  return digits.padStart(3, "0");
-}
 
 function normalizeCreateOrderPayload(body = {}) {
   const scheduleId = String(body.schedule_id || "").trim();
@@ -438,31 +425,18 @@ async function create(req, res) {
       return res.status(409).json({ message: "只有排程狀態為 OPEN 時才能建立訂單" });
     }
 
-    const orderDate = String(schedule.schedule_date || "").replace(/-/g, "");
-    if (!/^\d{8}$/.test(orderDate)) {
-      await client.query("ROLLBACK");
-      return res.status(400).json({ message: "排程日期無效，無法產生訂單編號" });
-    }
-    const orderNoPhonePart = getOrderNoPhonePart(payload.customer_phone);
-
     await client.query(
       `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`,
-      [`${req.user.sub}:${orderDate}`],
+      [`order_no:${req.user.sub}`],
     );
     const sequenceResult = await client.query(
       `SELECT (COUNT(*) + 1)::int AS next_sequence
        FROM orders
-       WHERE user_id = $1
-         AND schedule_id IN (
-           SELECT id
-           FROM schedules
-           WHERE user_id = $1
-             AND schedule_date = $2::date
-         )`,
-      [req.user.sub, schedule.schedule_date],
+       WHERE user_id = $1`,
+      [req.user.sub],
     );
     const nextSequence = sequenceResult.rows[0]?.next_sequence || 1;
-    const orderNo = `${orderNoPhonePart}-${orderDate}-${String(nextSequence).padStart(3, "0")}`;
+    const orderNo = String(nextSequence).padStart(4, "0");
 
     const orderResult = await client.query(
       `INSERT INTO orders (

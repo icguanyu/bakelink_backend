@@ -29,13 +29,6 @@ function formatScheduleRow(row, timeZone) {
   };
 }
 
-function getOrderNoPhonePart(phone) {
-  const digits = String(phone || "").replace(/\D/g, "");
-  if (digits.length === 0) return "000";
-  if (digits.startsWith("0") && digits.length >= 4) return digits.slice(1, 4);
-  if (digits.length >= 3) return digits.slice(0, 3);
-  return digits.padStart(3, "0");
-}
 
 // ────────────────────────────────────────────────────────────
 // GET /shop/:slug
@@ -415,25 +408,18 @@ async function createOrder(req, res) {
       return res.status(409).json({ message: "此排程目前不開放接單" });
     }
 
-    const orderDate = String(schedule.schedule_date || "").replace(/-/g, "");
-    const orderNoPhonePart = getOrderNoPhonePart(payload.customer_phone);
-
     await client.query(
       `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`,
-      [`${userId}:${orderDate}`],
+      [`order_no:${userId}`],
     );
     const sequenceResult = await client.query(
       `SELECT (COUNT(*) + 1)::int AS next_sequence
        FROM orders
-       WHERE user_id = $1
-         AND schedule_id IN (
-           SELECT id FROM schedules
-           WHERE user_id = $1 AND schedule_date = $2::date
-         )`,
-      [userId, schedule.schedule_date],
+       WHERE user_id = $1`,
+      [userId],
     );
     const nextSequence = sequenceResult.rows[0]?.next_sequence || 1;
-    const orderNo = `${orderNoPhonePart}-${orderDate}-${String(nextSequence).padStart(3, "0")}`;
+    const orderNo = String(nextSequence).padStart(4, "0");
 
     const orderResult = await client.query(
       `INSERT INTO orders (
