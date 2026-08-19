@@ -7,7 +7,7 @@ router.get("/", authRequired, adminOnly, list);
 router.get("/me", authRequired, getMe);
 router.put("/me", authRequired, updateMe);
 router.patch("/me", authRequired, updateMe);
-router.patch("/me/line", authRequired, bindLine);
+router.put("/me/line", authRequired, bindLine);
 router.delete("/me/line", authRequired, unbindLine);
 
 module.exports = router;
