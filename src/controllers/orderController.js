@@ -487,6 +487,7 @@ async function create(req, res) {
     const order = orderResult.rows[0];
 
     let totalAmount = 0;
+    const orderItems = [];
     for (const item of payload.items) {
       const keySql = item.schedule_item_id
         ? "si.id = $2"
@@ -544,6 +545,7 @@ async function create(req, res) {
           lineTotal,
         ],
       );
+      orderItems.push({ product_name: scheduleItem.product_name, quantity: item.quantity, is_sliced: item.is_sliced });
     }
 
     const updatedOrderResult = await client.query(
@@ -564,9 +566,12 @@ async function create(req, res) {
     );
     const lineUserId = lineResult.rows[0]?.line_user_id;
     if (lineUserId) {
-      pushMessage(lineUserId, buildOrderNotification(updatedOrderResult.rows[0])).catch((err) =>
-        console.error("[LINE notify error]", err.message),
-      );
+      pushMessage(lineUserId, buildOrderNotification({
+        ...updatedOrderResult.rows[0],
+        schedule_date: schedule.schedule_date,
+        items: orderItems,
+        created_at: new Date(),
+      })).catch((err) => console.error("[LINE notify error]", err.message));
     }
 
     const timeZone = resolveTimeZone(req);

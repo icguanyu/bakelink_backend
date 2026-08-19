@@ -42,6 +42,19 @@ async function pushMessage(lineUserId, message) {
   });
 }
 
+const PAYMENT_LABEL = { cash: "現金", linepay: "LINE Pay", bank: "銀行轉帳", card: "信用卡" };
+
+function formatTime(t) {
+  return t ? String(t).substring(0, 5) : "未指定";
+}
+
+function formatDateTime(dt) {
+  if (!dt) return "-";
+  const d = new Date(dt);
+  const p = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
 /**
  * Build the order notification message for shop owners.
  */
@@ -49,14 +62,29 @@ function buildOrderNotification(order) {
   const lines = [
     `🔔 新訂單通知`,
     `訂單編號：${order.order_no}`,
+    `下單時間：${formatDateTime(order.created_at)}`,
+    `排程日期：${order.schedule_date ?? "-"}`,
+    ``,
     `顧客姓名：${order.customer_name}`,
     `顧客電話：${order.customer_phone}`,
-    `取件時間：${order.pickup_time ?? "未指定"}`,
-    `付款方式：${order.payment_method ?? "-"}`,
+    `取件時間：${formatTime(order.pickup_time)}`,
+    `付款方式：${PAYMENT_LABEL[order.payment_method] ?? order.payment_method ?? "-"}`,
     `總金額：NT$ ${order.total_amount}`,
   ];
 
-  if (order.note) lines.push(`備註：${order.note}`);
+  if (Array.isArray(order.items) && order.items.length > 0) {
+    lines.push(``);
+    lines.push(`產品清單：`);
+    for (const item of order.items) {
+      const sliceNote = item.is_sliced ? "（切片）" : "";
+      lines.push(`・${item.product_name} × ${item.quantity}${sliceNote}`);
+    }
+  }
+
+  if (order.note) {
+    lines.push(``);
+    lines.push(`備註：${order.note}`);
+  }
 
   return lines.join("\n");
 }

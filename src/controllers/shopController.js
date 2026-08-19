@@ -531,7 +531,13 @@ async function createOrder(req, res) {
         if (lineUserId) {
           return pushMessage(
             lineUserId,
-            buildOrderNotification({ ...row, payment_method: payload.payment_method }),
+            buildOrderNotification({
+              ...row,
+              payment_method: payload.payment_method,
+              schedule_date: schedule.schedule_date,
+              items: orderItems,
+              created_at: new Date(),
+            }),
           );
         }
       })
