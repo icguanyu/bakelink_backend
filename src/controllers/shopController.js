@@ -410,13 +410,13 @@ async function createOrder(req, res) {
 
     await client.query(
       `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`,
-      [`order_no:${userId}`],
+      [`order_no:schedule:${payload.schedule_id}`],
     );
     const sequenceResult = await client.query(
       `SELECT (COUNT(*) + 1)::int AS next_sequence
        FROM orders
-       WHERE user_id = $1`,
-      [userId],
+       WHERE schedule_id = $1`,
+      [payload.schedule_id],
     );
     const nextSequence = sequenceResult.rows[0]?.next_sequence || 1;
     const orderNo = String(nextSequence).padStart(4, "0");
