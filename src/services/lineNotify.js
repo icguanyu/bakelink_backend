@@ -34,7 +34,7 @@ async function pushMessage(lineUserId, message) {
             reject(new Error(`LINE API error ${res.statusCode}: ${data}`));
           }
         });
-      }
+      },
     );
     req.on("error", reject);
     req.write(body);
@@ -42,7 +42,12 @@ async function pushMessage(lineUserId, message) {
   });
 }
 
-const PAYMENT_LABEL = { cash: "現金", linepay: "LINE Pay", bank: "銀行轉帳", card: "信用卡" };
+const PAYMENT_LABEL = {
+  cash: "現金",
+  linepay: "LINE Pay",
+  bank: "銀行轉帳",
+  card: "信用卡",
+};
 
 function formatTime(t) {
   return t ? String(t).substring(0, 5) : "未指定";
@@ -61,10 +66,10 @@ function formatDateTime(dt) {
 function buildOrderNotification(order) {
   const lines = [
     `🔔 新訂單通知`,
-    `訂單編號：${order.order_no}`,
-    `下單時間：${formatDateTime(order.created_at)}`,
-    ``,
     `取貨日：${order.schedule_date ?? "-"}`,
+    `訂單編號：${order.order_no}`,
+    ``,
+    `下單時間：${formatDateTime(order.created_at)}`,
     `顧客姓名：${order.customer_name}`,
     `顧客電話：${order.customer_phone}`,
     `取件時間：${formatTime(order.pickup_time)}`,
