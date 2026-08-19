@@ -658,7 +658,7 @@
       },
     },
     "/users/me/line": {
-      patch: {
+      put: {
         tags: ["LINE Notifications"],
         summary: "綁定 LINE User ID",
         description: "店家將 LINE Bot 回傳的 User ID 填入以啟用訂單通知。User ID 格式為 U 開頭、共 33 字元的十六進位字串。",
