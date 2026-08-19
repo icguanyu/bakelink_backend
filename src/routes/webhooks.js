@@ -49,11 +49,13 @@ router.post("/line", (req, res) => {
     }
 
     if (event.type === "message" && event.message?.type === "text") {
-      // Reply with the user's LINE user ID so shop owners can find and bind it
-      replyMessage(
-        event.replyToken,
-        `您的 LINE User ID 為：\n${lineUserId}\n\n請複製此 ID，貼到後台「通知設定」進行綁定。`,
-      );
+      const text = event.message.text.trim();
+      if (text === "綁定") {
+        replyMessage(
+          event.replyToken,
+          `您的 LINE User ID 為：\n${lineUserId}\n\n請複製此 ID，貼到後台「設定 → 05 通知」進行綁定。`,
+        );
+      }
     }
   }
 
