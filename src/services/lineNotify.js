@@ -60,21 +60,21 @@ function formatDateTime(dt) {
  */
 function buildOrderNotification(order) {
   const lines = [
-    `🔔 新訂單通知`,
-    `訂單編號：${order.order_no}`,
-    `下單時間：${formatDateTime(order.created_at)}`,
-    `排程日期：${order.schedule_date ?? "-"}`,
+    `🔔 新訂單來囉！`,
+    `📋 訂單編號：${order.order_no}`,
+    `🕐 下單時間：${formatDateTime(order.created_at)}`,
     ``,
-    `顧客姓名：${order.customer_name}`,
-    `顧客電話：${order.customer_phone}`,
-    `取件時間：${formatTime(order.pickup_time)}`,
-    `付款方式：${PAYMENT_LABEL[order.payment_method] ?? order.payment_method ?? "-"}`,
-    `總金額：NT$ ${order.total_amount}`,
+    `📅 取貨日：${order.schedule_date ?? "-"}`,
+    `👤 顧客姓名：${order.customer_name}`,
+    `📞 顧客電話：${order.customer_phone}`,
+    `⏰ 取件時間：${formatTime(order.pickup_time)}`,
+    `💳 付款方式：${PAYMENT_LABEL[order.payment_method] ?? order.payment_method ?? "-"}`,
+    `💰 總金額：NT$ ${order.total_amount}`,
   ];
 
   if (Array.isArray(order.items) && order.items.length > 0) {
     lines.push(``);
-    lines.push(`產品清單：`);
+    lines.push(`🧁 產品清單：`);
     for (const item of order.items) {
       const sliceNote = item.is_sliced ? "（切片）" : "";
       lines.push(`・${item.product_name} × ${item.quantity}${sliceNote}`);
@@ -83,7 +83,7 @@ function buildOrderNotification(order) {
 
   if (order.note) {
     lines.push(``);
-    lines.push(`備註：${order.note}`);
+    lines.push(`📝 備註：${order.note}`);
   }
 
   return lines.join("\n");
