@@ -460,41 +460,73 @@ async function create(req, res) {
     );
     const order = orderResult.rows[0];
 
+    // 批量取得所有 schedule_items（一次查詢 + 一次 FOR UPDATE OF si）
+    const itemIds = payload.items
+      .filter((it) => it.schedule_item_id)
+      .map((it) => it.schedule_item_id);
+    const productIds = payload.items
+      .filter((it) => !it.schedule_item_id && it.product_id)
+      .map((it) => it.product_id);
+
+    const scheduleItemsResult = await client.query(
+      `SELECT si.id, si.schedule_id, si.product_id, si.product_name, si.unit_price, si.sales_limit,
+              p.is_sliceable, p.slice_price
+       FROM schedule_items si
+       LEFT JOIN products p ON p.id = si.product_id
+       WHERE si.schedule_id = $1
+         AND (si.id = ANY($2::uuid[]) OR si.product_id = ANY($3::uuid[]))
+       FOR UPDATE OF si`,
+      [payload.schedule_id, itemIds, productIds],
+    );
+    const scheduleItemById = new Map();
+    const scheduleItemByProductId = new Map();
+    for (const row of scheduleItemsResult.rows) {
+      scheduleItemById.set(row.id, row);
+      if (row.product_id) {
+        scheduleItemByProductId.set(row.product_id, row);
+      }
+    }
+
+    // 批量取得所有 schedule_item 的目前已售數量
+    const affectedItemIds = scheduleItemsResult.rows.map((r) => r.id);
+    const soldQtyByItemId = new Map();
+    if (affectedItemIds.length > 0) {
+      const soldResult = await client.query(
+        `SELECT oi.schedule_item_id, COALESCE(SUM(oi.quantity), 0)::int AS sold_qty
+         FROM order_items oi
+         JOIN orders o ON o.id = oi.order_id
+         WHERE oi.schedule_item_id = ANY($1::uuid[])
+           AND o.status IN ('PLACED', 'COMPLETED')
+         GROUP BY oi.schedule_item_id`,
+        [affectedItemIds],
+      );
+      for (const row of soldResult.rows) {
+        soldQtyByItemId.set(row.schedule_item_id, row.sold_qty);
+      }
+    }
+
     let totalAmount = 0;
     const orderItems = [];
+    // 用 Map 累積本次訂單同一 schedule_item 的重複下單量（保留原本可疊加行為）
+    const pendingQtyByItemId = new Map();
+    const insertValues = [];
+    const insertParams = [];
+    let paramIdx = 1;
     for (const item of payload.items) {
-      const keySql = item.schedule_item_id
-        ? "si.id = $2"
-        : "si.product_id = $2";
-      const keyValue = item.schedule_item_id || item.product_id;
-
-      const scheduleItemResult = await client.query(
-        `SELECT si.id, si.schedule_id, si.product_id, si.product_name, si.unit_price, si.sales_limit,
-                p.is_sliceable, p.slice_price
-         FROM schedule_items si
-         LEFT JOIN products p ON p.id = si.product_id
-         WHERE si.schedule_id = $1 AND ${keySql}
-         FOR UPDATE OF si`,
-        [payload.schedule_id, keyValue],
-      );
-      const scheduleItem = scheduleItemResult.rows[0];
+      const scheduleItem = item.schedule_item_id
+        ? scheduleItemById.get(item.schedule_item_id)
+        : scheduleItemByProductId.get(item.product_id);
       if (!scheduleItem) {
         throw new Error("SCHEDULE_ITEM_NOT_FOUND");
       }
 
       if (Number(scheduleItem.sales_limit) > 0) {
-        const soldResult = await client.query(
-          `SELECT COALESCE(SUM(oi.quantity), 0)::int AS sold_qty
-           FROM order_items oi
-           JOIN orders o ON o.id = oi.order_id
-           WHERE oi.schedule_item_id = $1
-             AND o.status IN ('PLACED', 'COMPLETED')`,
-          [scheduleItem.id],
-        );
-        const soldQty = soldResult.rows[0]?.sold_qty || 0;
-        if (soldQty + item.quantity > scheduleItem.sales_limit) {
+        const soldQty = soldQtyByItemId.get(scheduleItem.id) || 0;
+        const pendingQty = pendingQtyByItemId.get(scheduleItem.id) || 0;
+        if (soldQty + pendingQty + item.quantity > scheduleItem.sales_limit) {
           throw new Error("SALES_LIMIT_EXCEEDED");
         }
+        pendingQtyByItemId.set(scheduleItem.id, pendingQty + item.quantity);
       }
 
       const effectivePrice =
@@ -504,22 +536,31 @@ async function create(req, res) {
       const lineTotal = effectivePrice * item.quantity;
       totalAmount += lineTotal;
 
+      insertValues.push(
+        `($${paramIdx}, $${paramIdx + 1}, $${paramIdx + 2}, $${paramIdx + 3}, $${paramIdx + 4}, $${paramIdx + 5}, $${paramIdx + 6}, $${paramIdx + 7})`,
+      );
+      insertParams.push(
+        order.id,
+        scheduleItem.id,
+        scheduleItem.product_id,
+        scheduleItem.product_name,
+        effectivePrice,
+        item.quantity,
+        item.is_sliced,
+        lineTotal,
+      );
+      paramIdx += 8;
+
+      orderItems.push({ product_name: scheduleItem.product_name, quantity: item.quantity, is_sliced: item.is_sliced });
+    }
+
+    if (insertValues.length > 0) {
       await client.query(
         `INSERT INTO order_items (
            order_id, schedule_item_id, product_id, product_name, unit_price, quantity, is_sliced, line_total
-         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-        [
-          order.id,
-          scheduleItem.id,
-          scheduleItem.product_id,
-          scheduleItem.product_name,
-          effectivePrice,
-          item.quantity,
-          item.is_sliced,
-          lineTotal,
-        ],
+         ) VALUES ${insertValues.join(", ")}`,
+        insertParams,
       );
-      orderItems.push({ product_name: scheduleItem.product_name, quantity: item.quantity, is_sliced: item.is_sliced });
     }
 
     const updatedOrderResult = await client.query(
@@ -612,41 +653,69 @@ async function update(req, res) {
 
     await client.query(`DELETE FROM order_items WHERE order_id = $1`, [order.id]);
 
-    let totalAmount = 0;
-    for (const item of payload.items) {
-      const keySql = item.schedule_item_id
-        ? "si.id = $2"
-        : "si.product_id = $2";
-      const keyValue = item.schedule_item_id || item.product_id;
+    const itemIds = payload.items
+      .filter((it) => it.schedule_item_id)
+      .map((it) => it.schedule_item_id);
+    const productIds = payload.items
+      .filter((it) => !it.schedule_item_id && it.product_id)
+      .map((it) => it.product_id);
 
-      const scheduleItemResult = await client.query(
-        `SELECT si.id, si.schedule_id, si.product_id, si.product_name, si.unit_price, si.sales_limit,
-                p.is_sliceable, p.slice_price
-         FROM schedule_items si
-         LEFT JOIN products p ON p.id = si.product_id
-         WHERE si.schedule_id = $1 AND ${keySql}
-         FOR UPDATE OF si`,
-        [order.schedule_id, keyValue],
+    const scheduleItemsResult = await client.query(
+      `SELECT si.id, si.schedule_id, si.product_id, si.product_name, si.unit_price, si.sales_limit,
+              p.is_sliceable, p.slice_price
+       FROM schedule_items si
+       LEFT JOIN products p ON p.id = si.product_id
+       WHERE si.schedule_id = $1
+         AND (si.id = ANY($2::uuid[]) OR si.product_id = ANY($3::uuid[]))
+       FOR UPDATE OF si`,
+      [order.schedule_id, itemIds, productIds],
+    );
+    const scheduleItemById = new Map();
+    const scheduleItemByProductId = new Map();
+    for (const row of scheduleItemsResult.rows) {
+      scheduleItemById.set(row.id, row);
+      if (row.product_id) {
+        scheduleItemByProductId.set(row.product_id, row);
+      }
+    }
+
+    const affectedItemIds = scheduleItemsResult.rows.map((r) => r.id);
+    const soldQtyByItemId = new Map();
+    if (affectedItemIds.length > 0) {
+      const soldResult = await client.query(
+        `SELECT oi.schedule_item_id, COALESCE(SUM(oi.quantity), 0)::int AS sold_qty
+         FROM order_items oi
+         JOIN orders o ON o.id = oi.order_id
+         WHERE oi.schedule_item_id = ANY($1::uuid[])
+           AND o.status IN ('PLACED', 'COMPLETED')
+           AND o.id <> $2`,
+        [affectedItemIds, order.id],
       );
-      const scheduleItem = scheduleItemResult.rows[0];
+      for (const row of soldResult.rows) {
+        soldQtyByItemId.set(row.schedule_item_id, row.sold_qty);
+      }
+    }
+
+    let totalAmount = 0;
+    const pendingQtyByItemId = new Map();
+    const insertValues = [];
+    const insertParams = [];
+    let paramIdx = 1;
+    for (const item of payload.items) {
+      const scheduleItem = item.schedule_item_id
+        ? scheduleItemById.get(item.schedule_item_id)
+        : scheduleItemByProductId.get(item.product_id);
       if (!scheduleItem) {
         throw new Error("SCHEDULE_ITEM_NOT_FOUND");
       }
 
       if (Number(scheduleItem.sales_limit) > 0) {
-        const soldResult = await client.query(
-          `SELECT COALESCE(SUM(oi.quantity), 0)::int AS sold_qty
-           FROM order_items oi
-           JOIN orders o ON o.id = oi.order_id
-           WHERE oi.schedule_item_id = $1
-             AND o.status IN ('PLACED', 'COMPLETED')
-             AND o.id <> $2`,
-          [scheduleItem.id, order.id],
-        );
-        const soldQty = soldResult.rows[0]?.sold_qty || 0;
-        if (soldQty + item.quantity > scheduleItem.sales_limit) {
+        const soldQty = soldQtyByItemId.get(scheduleItem.id) || 0;
+        const pendingQty = pendingQtyByItemId.get(scheduleItem.id) || 0;
+        if (soldQty + pendingQty + item.quantity > scheduleItem.sales_limit) {
           throw new Error("SALES_LIMIT_EXCEEDED");
         }
+        pendingQtyByItemId.set(scheduleItem.id, pendingQty + item.quantity);
       }
 
       const effectivePrice =
@@ -656,20 +725,28 @@ async function update(req, res) {
       const lineTotal = effectivePrice * item.quantity;
       totalAmount += lineTotal;
 
+      insertValues.push(
+        `($${paramIdx}, $${paramIdx + 1}, $${paramIdx + 2}, $${paramIdx + 3}, $${paramIdx + 4}, $${paramIdx + 5}, $${paramIdx + 6}, $${paramIdx + 7})`,
+      );
+      insertParams.push(
+        order.id,
+        scheduleItem.id,
+        scheduleItem.product_id,
+        scheduleItem.product_name,
+        effectivePrice,
+        item.quantity,
+        item.is_sliced,
+        lineTotal,
+      );
+      paramIdx += 8;
+    }
+
+    if (insertValues.length > 0) {
       await client.query(
         `INSERT INTO order_items (
            order_id, schedule_item_id, product_id, product_name, unit_price, quantity, is_sliced, line_total
-         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-        [
-          order.id,
-          scheduleItem.id,
-          scheduleItem.product_id,
-          scheduleItem.product_name,
-          effectivePrice,
-          item.quantity,
-          item.is_sliced,
-          lineTotal,
-        ],
+         ) VALUES ${insertValues.join(", ")}`,
+        insertParams,
       );
     }
 

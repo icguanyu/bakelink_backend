@@ -12,12 +12,31 @@ const { pushMessage, buildOrderNotification } = require("../services/lineNotify"
 // Helpers
 // ────────────────────────────────────────────────────────────
 
+const SHOP_SLUG_CACHE_TTL_MS = 60 * 1000;
+const shopSlugCache = new Map();
+
 async function resolveShopUserId(slug) {
+  const now = Date.now();
+  const cached = shopSlugCache.get(slug);
+  if (cached && cached.expiresAt > now) {
+    return cached.userId;
+  }
+
   const result = await pool.query(
     `SELECT id FROM users WHERE shop_slug = $1`,
     [slug],
   );
-  return result.rows[0]?.id || null;
+  const userId = result.rows[0]?.id || null;
+
+  shopSlugCache.set(slug, { userId, expiresAt: now + SHOP_SLUG_CACHE_TTL_MS });
+  // 防止 cache 無限增長：超過 1000 條時清理已過期項目
+  if (shopSlugCache.size > 1000) {
+    for (const [key, value] of shopSlugCache) {
+      if (value.expiresAt <= now) shopSlugCache.delete(key);
+    }
+  }
+
+  return userId;
 }
 
 function formatScheduleRow(row, timeZone) {
@@ -445,34 +464,56 @@ async function createOrder(req, res) {
     );
     const order = orderResult.rows[0];
 
+    const itemIds = payload.items.map((it) => it.schedule_item_id);
+
+    const scheduleItemsResult = await client.query(
+      `SELECT si.id, si.product_id, si.product_name, si.unit_price, si.sales_limit,
+              p.is_sliceable, p.slice_price
+       FROM schedule_items si
+       LEFT JOIN products p ON p.id = si.product_id
+       WHERE si.schedule_id = $1 AND si.id = ANY($2::uuid[])
+       FOR UPDATE OF si`,
+      [payload.schedule_id, itemIds],
+    );
+    const scheduleItemById = new Map();
+    for (const row of scheduleItemsResult.rows) {
+      scheduleItemById.set(row.id, row);
+    }
+
+    const affectedItemIds = scheduleItemsResult.rows.map((r) => r.id);
+    const soldQtyByItemId = new Map();
+    if (affectedItemIds.length > 0) {
+      const soldResult = await client.query(
+        `SELECT oi.schedule_item_id, COALESCE(SUM(oi.quantity), 0)::int AS sold_qty
+         FROM order_items oi
+         JOIN orders o ON o.id = oi.order_id
+         WHERE oi.schedule_item_id = ANY($1::uuid[])
+           AND o.status IN ('PLACED', 'COMPLETED')
+         GROUP BY oi.schedule_item_id`,
+        [affectedItemIds],
+      );
+      for (const row of soldResult.rows) {
+        soldQtyByItemId.set(row.schedule_item_id, row.sold_qty);
+      }
+    }
+
     let totalAmount = 0;
     const orderItems = [];
+    const pendingQtyByItemId = new Map();
+    const insertValues = [];
+    const insertParams = [];
+    let paramIdx = 1;
     for (const item of payload.items) {
-      const scheduleItemResult = await client.query(
-        `SELECT si.id, si.product_id, si.product_name, si.unit_price, si.sales_limit,
-                p.is_sliceable, p.slice_price
-         FROM schedule_items si
-         LEFT JOIN products p ON p.id = si.product_id
-         WHERE si.id = $1 AND si.schedule_id = $2
-         FOR UPDATE OF si`,
-        [item.schedule_item_id, payload.schedule_id],
-      );
-      const si = scheduleItemResult.rows[0];
+      const si = scheduleItemById.get(item.schedule_item_id);
       if (!si) throw new Error("SCHEDULE_ITEM_NOT_FOUND");
 
       if (si.sales_limit !== null) {
-        const soldResult = await client.query(
-          `SELECT COALESCE(SUM(oi.quantity), 0)::int AS sold_qty
-           FROM order_items oi
-           JOIN orders o ON o.id = oi.order_id
-           WHERE oi.schedule_item_id = $1
-             AND o.status IN ('PLACED', 'COMPLETED')`,
-          [si.id],
-        );
-        const soldQty = soldResult.rows[0]?.sold_qty || 0;
-        if (soldQty + item.quantity > si.sales_limit) {
+        const soldQty = soldQtyByItemId.get(si.id) || 0;
+        const pendingQty = pendingQtyByItemId.get(si.id) || 0;
+        if (soldQty + pendingQty + item.quantity > si.sales_limit) {
           throw new Error("SALES_LIMIT_EXCEEDED");
         }
+        pendingQtyByItemId.set(si.id, pendingQty + item.quantity);
       }
 
       const effectivePrice =
@@ -482,19 +523,36 @@ async function createOrder(req, res) {
       const lineTotal = effectivePrice * item.quantity;
       totalAmount += lineTotal;
 
-      await client.query(
-        `INSERT INTO order_items (
-           order_id, schedule_item_id, product_id, product_name,
-           unit_price, quantity, is_sliced, line_total
-         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-        [order.id, si.id, si.product_id, si.product_name, effectivePrice, item.quantity, item.is_sliced, lineTotal],
+      insertValues.push(
+        `($${paramIdx}, $${paramIdx + 1}, $${paramIdx + 2}, $${paramIdx + 3}, $${paramIdx + 4}, $${paramIdx + 5}, $${paramIdx + 6}, $${paramIdx + 7})`,
       );
+      insertParams.push(
+        order.id,
+        si.id,
+        si.product_id,
+        si.product_name,
+        effectivePrice,
+        item.quantity,
+        item.is_sliced,
+        lineTotal,
+      );
+      paramIdx += 8;
 
       orderItems.push(
         normalizeDecimalFields(
           { product_name: si.product_name, unit_price: effectivePrice, quantity: item.quantity, is_sliced: item.is_sliced, line_total: lineTotal },
           ["unit_price", "line_total"],
         ),
+      );
+    }
+
+    if (insertValues.length > 0) {
+      await client.query(
+        `INSERT INTO order_items (
+           order_id, schedule_item_id, product_id, product_name,
+           unit_price, quantity, is_sliced, line_total
+         ) VALUES ${insertValues.join(", ")}`,
+        insertParams,
       );
     }
 

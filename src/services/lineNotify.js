@@ -19,6 +19,7 @@ async function pushMessage(lineUserId, message) {
       LINE_PUSH_URL,
       {
         method: "POST",
+        timeout: 5000,
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${CHANNEL_ACCESS_TOKEN}`,
@@ -37,6 +38,9 @@ async function pushMessage(lineUserId, message) {
       },
     );
     req.on("error", reject);
+    req.on("timeout", () => {
+      req.destroy(new Error("LINE API request timeout"));
+    });
     req.write(body);
     req.end();
   });

@@ -24,5 +24,10 @@ module.exports = {
     password: process.env.PGPASSWORD || process.env.PGSQL_PASSWORD || "",
     ssl:
       process.env.PGSSL === "true" ? { rejectUnauthorized: false } : undefined,
+    max: Number(process.env.PGPOOL_MAX || 20),
+    idleTimeoutMillis: Number(process.env.PGPOOL_IDLE_TIMEOUT_MS || 30000),
+    connectionTimeoutMillis: Number(process.env.PGPOOL_CONNECT_TIMEOUT_MS || 5000),
+    statement_timeout: Number(process.env.PG_STATEMENT_TIMEOUT_MS || 15000),
+    query_timeout: Number(process.env.PG_QUERY_TIMEOUT_MS || 15000),
   },
 };
