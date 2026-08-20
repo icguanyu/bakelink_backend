@@ -580,6 +580,7 @@ async function listOrdersByPhone(req, res) {
        JOIN schedules s ON s.id = o.schedule_id
        WHERE o.user_id = $1
          AND o.customer_phone = $2
+         AND o.created_at >= NOW() - INTERVAL '90 days'
        ORDER BY o.created_at DESC`,
       [userId, phone],
     );
