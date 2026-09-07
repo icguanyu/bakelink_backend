@@ -1,8 +1,8 @@
 const path = require("path");
 const crypto = require("crypto");
 const { pool } = require("../db");
-const { upload, supabase } = require("../config");
-const { getSupabaseClient } = require("../utils/supabase");
+const { upload, gcs } = require("../config");
+const { getBucket, publicUrlFor } = require("../utils/gcs");
 
 function resolveSafeExtension(fileName = "", mimeType = "") {
   const ext = path.extname(fileName).toLowerCase();
@@ -35,12 +35,12 @@ function resolveUploadedFileMeta(file) {
 
 async function uploadFile(req, res) {
   try {
-    if (!supabase.storageBucket) {
+    if (!gcs.bucketName) {
       return res.status(500).json({ message: "儲存空間未設定，請聯繫系統管理員" });
     }
 
-    const supabaseClient = getSupabaseClient();
-    if (!supabaseClient) {
+    const bucket = getBucket();
+    if (!bucket) {
       return res.status(500).json({ message: "儲存服務未設定，請聯繫系統管理員" });
     }
 
@@ -54,25 +54,16 @@ async function uploadFile(req, res) {
     const randomPart = crypto.randomBytes(8).toString("hex");
     const objectPath = `${req.user.sub}/products/${Date.now()}-${randomPart}${ext}`;
 
-    const { error: uploadError } = await supabaseClient.storage
-      .from(supabase.storageBucket)
-      .upload(objectPath, file.buffer, {
+    try {
+      await bucket.file(objectPath).save(file.buffer, {
         contentType: file.mimetype,
-        upsert: false,
+        resumable: false,
       });
-
-    if (uploadError) {
+    } catch (uploadError) {
       return res.status(502).json({ message: "上傳檔案至儲存空間失敗", error: uploadError.message });
     }
 
-    const { data: publicUrlData } = supabaseClient.storage
-      .from(supabase.storageBucket)
-      .getPublicUrl(objectPath);
-
-    const publicUrl = publicUrlData?.publicUrl || null;
-    if (!publicUrl) {
-      return res.status(502).json({ message: "無法取得上傳檔案的網址" });
-    }
+    const publicUrl = publicUrlFor(objectPath);
 
     await pool.query(
       `INSERT INTO uploaded_files (
@@ -81,7 +72,7 @@ async function uploadFile(req, res) {
        RETURNING id`,
       [
         req.user.sub,
-        supabase.storageBucket,
+        gcs.bucketName,
         objectPath,
         publicUrl,
         file.originalname || "",
@@ -98,12 +89,12 @@ async function uploadFile(req, res) {
 }
 
 async function uploadAvatar(req, res) {
-  if (!supabase.storageBucket) {
+  if (!gcs.bucketName) {
     return res.status(500).json({ message: "儲存空間未設定，請聯繫系統管理員" });
   }
 
-  const supabaseClient = getSupabaseClient();
-  if (!supabaseClient) {
+  const bucket = getBucket();
+  if (!bucket) {
     return res.status(500).json({ message: "儲存服務未設定，請聯繫系統管理員" });
   }
 
@@ -137,27 +128,17 @@ async function uploadAvatar(req, res) {
     const objectPath = `${req.user.sub}/avatars/${Date.now()}-${randomPart}${ext}`;
     uploadedObjectPath = objectPath;
 
-    const { error: uploadError } = await supabaseClient.storage
-      .from(supabase.storageBucket)
-      .upload(objectPath, file.buffer, {
+    try {
+      await bucket.file(objectPath).save(file.buffer, {
         contentType: file.mimetype,
-        upsert: false,
+        resumable: false,
       });
-
-    if (uploadError) {
+    } catch (uploadError) {
       client.release();
       return res.status(502).json({ message: "上傳大頭貼至儲存空間失敗", error: uploadError.message });
     }
 
-    const { data: publicUrlData } = supabaseClient.storage
-      .from(supabase.storageBucket)
-      .getPublicUrl(objectPath);
-
-    const publicUrl = publicUrlData?.publicUrl || null;
-    if (!publicUrl) {
-      client.release();
-      return res.status(502).json({ message: "無法取得上傳大頭貼的網址" });
-    }
+    const publicUrl = publicUrlFor(objectPath);
 
     try {
       await client.query("BEGIN");
@@ -175,7 +156,7 @@ async function uploadAvatar(req, res) {
          RETURNING id`,
         [
           req.user.sub,
-          supabase.storageBucket,
+          gcs.bucketName,
           objectPath,
           publicUrl,
           file.originalname || "",
@@ -186,45 +167,47 @@ async function uploadAvatar(req, res) {
       await client.query("COMMIT");
     } catch (dbError) {
       await client.query("ROLLBACK");
-      const { error: cleanupError } = await supabaseClient.storage
-        .from(supabase.storageBucket)
-        .remove([objectPath]);
-      if (cleanupError) {
-        console.error("Failed to cleanup avatar after DB error:", cleanupError.message);
-      }
+      await bucket
+        .file(objectPath)
+        .delete({ ignoreNotFound: true })
+        .catch((cleanupError) => {
+          console.error("Failed to cleanup avatar after DB error:", cleanupError.message);
+        });
       throw dbError;
     } finally {
       client.release();
     }
 
     if (previousObjectPath && previousObjectPath !== objectPath) {
-      const { error: removeError } = await supabaseClient.storage
-        .from(supabase.storageBucket)
-        .remove([previousObjectPath]);
-      if (!removeError) {
+      const removed = await bucket
+        .file(previousObjectPath)
+        .delete({ ignoreNotFound: true })
+        .then(() => true)
+        .catch(() => false);
+      if (removed) {
         await pool.query(
           `DELETE FROM uploaded_files
            WHERE user_id = $1 AND bucket = $2 AND object_path = $3`,
-          [req.user.sub, supabase.storageBucket, previousObjectPath],
+          [req.user.sub, gcs.bucketName, previousObjectPath],
         );
       }
     } else if (previousAvatarUrl && previousAvatarUrl !== publicUrl) {
       await pool.query(
         `DELETE FROM uploaded_files
          WHERE user_id = $1 AND bucket = $2 AND public_url = $3`,
-        [req.user.sub, supabase.storageBucket, previousAvatarUrl],
+        [req.user.sub, gcs.bucketName, previousAvatarUrl],
       );
     }
 
     return res.status(201).json({ url: publicUrl });
   } catch (error) {
     if (uploadedObjectPath) {
-      const { error: cleanupError } = await supabaseClient.storage
-        .from(supabase.storageBucket)
-        .remove([uploadedObjectPath]);
-      if (cleanupError) {
-        console.error("Failed to cleanup avatar:", cleanupError.message);
-      }
+      await bucket
+        .file(uploadedObjectPath)
+        .delete({ ignoreNotFound: true })
+        .catch((cleanupError) => {
+          console.error("Failed to cleanup avatar:", cleanupError.message);
+        });
     }
     console.error("POST /UploadAvatar error:", error.message);
     return res.status(500).json({ message: "上傳大頭貼失敗", error: error.message });
@@ -232,12 +215,12 @@ async function uploadAvatar(req, res) {
 }
 
 async function uploadCover(req, res) {
-  if (!supabase.storageBucket) {
+  if (!gcs.bucketName) {
     return res.status(500).json({ message: "儲存空間未設定，請聯繫系統管理員" });
   }
 
-  const supabaseClient = getSupabaseClient();
-  if (!supabaseClient) {
+  const bucket = getBucket();
+  if (!bucket) {
     return res.status(500).json({ message: "儲存服務未設定，請聯繫系統管理員" });
   }
 
@@ -271,27 +254,17 @@ async function uploadCover(req, res) {
     const objectPath = `${req.user.sub}/covers/${Date.now()}-${randomPart}${ext}`;
     uploadedObjectPath = objectPath;
 
-    const { error: uploadError } = await supabaseClient.storage
-      .from(supabase.storageBucket)
-      .upload(objectPath, file.buffer, {
+    try {
+      await bucket.file(objectPath).save(file.buffer, {
         contentType: file.mimetype,
-        upsert: false,
+        resumable: false,
       });
-
-    if (uploadError) {
+    } catch (uploadError) {
       client.release();
       return res.status(502).json({ message: "上傳封面至儲存空間失敗", error: uploadError.message });
     }
 
-    const { data: publicUrlData } = supabaseClient.storage
-      .from(supabase.storageBucket)
-      .getPublicUrl(objectPath);
-
-    const publicUrl = publicUrlData?.publicUrl || null;
-    if (!publicUrl) {
-      client.release();
-      return res.status(502).json({ message: "無法取得上傳封面的網址" });
-    }
+    const publicUrl = publicUrlFor(objectPath);
 
     try {
       await client.query("BEGIN");
@@ -309,7 +282,7 @@ async function uploadCover(req, res) {
          RETURNING id`,
         [
           req.user.sub,
-          supabase.storageBucket,
+          gcs.bucketName,
           objectPath,
           publicUrl,
           file.originalname || "",
@@ -320,45 +293,47 @@ async function uploadCover(req, res) {
       await client.query("COMMIT");
     } catch (dbError) {
       await client.query("ROLLBACK");
-      const { error: cleanupError } = await supabaseClient.storage
-        .from(supabase.storageBucket)
-        .remove([objectPath]);
-      if (cleanupError) {
-        console.error("Failed to cleanup cover after DB error:", cleanupError.message);
-      }
+      await bucket
+        .file(objectPath)
+        .delete({ ignoreNotFound: true })
+        .catch((cleanupError) => {
+          console.error("Failed to cleanup cover after DB error:", cleanupError.message);
+        });
       throw dbError;
     } finally {
       client.release();
     }
 
     if (previousObjectPath && previousObjectPath !== objectPath) {
-      const { error: removeError } = await supabaseClient.storage
-        .from(supabase.storageBucket)
-        .remove([previousObjectPath]);
-      if (!removeError) {
+      const removed = await bucket
+        .file(previousObjectPath)
+        .delete({ ignoreNotFound: true })
+        .then(() => true)
+        .catch(() => false);
+      if (removed) {
         await pool.query(
           `DELETE FROM uploaded_files
            WHERE user_id = $1 AND bucket = $2 AND object_path = $3`,
-          [req.user.sub, supabase.storageBucket, previousObjectPath],
+          [req.user.sub, gcs.bucketName, previousObjectPath],
         );
       }
     } else if (previousCoverUrl && previousCoverUrl !== publicUrl) {
       await pool.query(
         `DELETE FROM uploaded_files
          WHERE user_id = $1 AND bucket = $2 AND public_url = $3`,
-        [req.user.sub, supabase.storageBucket, previousCoverUrl],
+        [req.user.sub, gcs.bucketName, previousCoverUrl],
       );
     }
 
     return res.status(201).json({ url: publicUrl });
   } catch (error) {
     if (uploadedObjectPath) {
-      const { error: cleanupError } = await supabaseClient.storage
-        .from(supabase.storageBucket)
-        .remove([uploadedObjectPath]);
-      if (cleanupError) {
-        console.error("Failed to cleanup cover:", cleanupError.message);
-      }
+      await bucket
+        .file(uploadedObjectPath)
+        .delete({ ignoreNotFound: true })
+        .catch((cleanupError) => {
+          console.error("Failed to cleanup cover:", cleanupError.message);
+        });
     }
     console.error("POST /UploadCover error:", error.message);
     return res.status(500).json({ message: "上傳封面失敗", error: error.message });

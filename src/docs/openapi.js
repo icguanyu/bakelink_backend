@@ -494,7 +494,7 @@
       UploadFileResponse: {
         type: "object",
         properties: {
-          url: { type: "string", example: "https://xxx.supabase.co/storage/v1/object/public/uploads/..." },
+          url: { type: "string", example: "https://storage.googleapis.com/uploads/..." },
         },
       },
       CustomerOrderBody: {
